@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#141821">
+<title>Calisthenics · 75 Hard</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#0f131b; --panel:#161b26; --panel2:#1d2432; --line:#2a3242;
+    --ink:#eef2f8; --muted:#8a94a6; --faint:#5b6577;
+    --push:#4f8ff0; --pull:#5ec27e; --rec:#e8944a;
+    --accent:#f0c14f; --done:#5ec27e;
+    --radius:16px;
+    --shadow:0 2px 12px rgba(0,0,0,.35);
+    font-size:16px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;}
+  body{padding-bottom:96px;}
+  .wrap{max-width:560px;margin:0 auto;padding:0 14px;}
+
+  /* Header */
+  header{padding:calc(env(safe-area-inset-top) + 18px) 0 12px;text-align:center;}
+  .kicker{font-size:.72rem;letter-spacing:.22em;text-transform:uppercase;color:var(--faint);font-weight:700;}
+  h1{margin:.2rem 0 0;font-size:1.32rem;font-weight:800;letter-spacing:-.01em;}
+  .sub{color:var(--muted);font-size:.82rem;margin-top:2px;}
+
+  /* Day tabs */
+  .days{display:flex;gap:6px;overflow-x:auto;padding:12px 0 6px;scrollbar-width:none;}
+  .days::-webkit-scrollbar{display:none;}
+  .day{flex:0 0 auto;min-width:52px;padding:9px 6px;border-radius:12px;background:var(--panel);
+    border:1px solid var(--line);text-align:center;cursor:pointer;transition:.15s;}
+  .day .d{font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700;}
+  .day .f{font-size:.64rem;margin-top:3px;font-weight:700;color:var(--faint);}
+  .day.active{background:var(--panel2);border-color:transparent;box-shadow:var(--shadow);}
+  .day.active[data-focus="Push"]{border-bottom:3px solid var(--push);}
+  .day.active[data-focus="Pull"]{border-bottom:3px solid var(--pull);}
+  .day.active[data-focus="Recovery"]{border-bottom:3px solid var(--rec);}
+  .day.active .d{color:var(--ink);}
+  .dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-top:4px;background:transparent;}
+  .day.hasdata .dot{background:var(--done);}
+
+  /* Focus banner */
+  .banner{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:var(--radius);
+    margin-top:8px;background:var(--panel);border:1px solid var(--line);}
+  .badge{font-size:.66rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+    padding:4px 9px;border-radius:20px;color:#0f131b;}
+  .badge.Push{background:var(--push);} .badge.Pull{background:var(--pull);} .badge.Recovery{background:var(--rec);}
+  .banner .t{font-weight:700;font-size:.92rem;}
+  .banner .n{color:var(--muted);font-size:.76rem;margin-top:1px;}
+
+  /* Section */
+  .section{margin-top:16px;}
+  .sechead{display:flex;align-items:center;gap:8px;margin:0 2px 8px;}
+  .sechead .num{font-size:.68rem;font-weight:800;color:var(--faint);letter-spacing:.05em;}
+  .sechead h2{margin:0;font-size:.82rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);}
+  .sechead .line{flex:1;height:1px;background:var(--line);}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:14px;margin-bottom:10px;box-shadow:var(--shadow);}
+
+  /* Warmup / stretch list */
+  .movelist{list-style:none;margin:0;padding:0;}
+  .movelist li{display:flex;gap:10px;padding:7px 0;font-size:.88rem;line-height:1.35;
+    border-bottom:1px solid var(--line);}
+  .movelist li:last-child{border-bottom:none;}
+  .movelist .mv{font-weight:600;}
+  .movelist .rx{color:var(--muted);font-size:.8rem;white-space:nowrap;margin-left:auto;padding-left:8px;}
+
+  /* Exercise card */
+  .ex-name{font-weight:800;font-size:1rem;}
+  .ex-target{color:var(--accent);font-size:.76rem;font-weight:700;margin-top:2px;letter-spacing:.02em;}
+  .ex-cue{color:var(--muted);font-size:.78rem;margin-top:6px;line-height:1.4;}
+  .sets{margin-top:12px;display:flex;flex-direction:column;gap:8px;}
+  .setrow{display:flex;align-items:center;gap:10px;}
+  .setlbl{font-size:.72rem;font-weight:800;color:var(--faint);width:44px;letter-spacing:.05em;}
+  .stepper{display:flex;align-items:center;gap:0;background:var(--panel2);border:1px solid var(--line);
+    border-radius:12px;overflow:hidden;flex:1;max-width:190px;}
+  .stepper button{width:46px;height:44px;border:none;background:transparent;color:var(--ink);
+    font-size:1.4rem;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+  .stepper button:active{background:var(--line);}
+  .stepper input{flex:1;width:100%;border:none;background:transparent;color:var(--ink);
+    text-align:center;font-size:1.1rem;font-weight:800;height:44px;
+    -moz-appearance:textfield;min-width:0;}
+  .stepper input::-webkit-outer-spin-button,.stepper input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
+  .exfoot{display:flex;justify-content:space-between;align-items:center;margin-top:12px;
+    padding-top:10px;border-top:1px solid var(--line);}
+  .total{font-size:.8rem;color:var(--muted);}
+  .total b{color:var(--ink);font-size:1.05rem;}
+  .advance{font-size:.7rem;font-weight:800;padding:4px 9px;border-radius:20px;
+    background:rgba(94,194,126,.15);color:var(--done);opacity:0;transition:.2s;}
+  .advance.show{opacity:1;}
+
+  /* Complete toggle */
+  .complete{display:flex;align-items:center;gap:12px;width:100%;margin-top:6px;padding:15px;
+    border-radius:var(--radius);border:1px solid var(--line);background:var(--panel);
+    color:var(--ink);font-weight:800;font-size:.92rem;cursor:pointer;justify-content:center;}
+  .complete .box{width:22px;height:22px;border-radius:6px;border:2px solid var(--faint);
+    display:flex;align-items:center;justify-content:center;transition:.15s;}
+  .complete.on{background:rgba(94,194,126,.12);border-color:var(--done);color:var(--done);}
+  .complete.on .box{background:var(--done);border-color:var(--done);}
+  .complete .box svg{width:14px;height:14px;opacity:0;transition:.15s;}
+  .complete.on .box svg{opacity:1;}
+
+  .note{font-size:.76rem;color:var(--faint);line-height:1.45;margin:14px 2px 0;text-align:center;}
+  .resetbtn{display:block;margin:18px auto 0;background:none;border:1px solid var(--line);
+    color:var(--muted);font-size:.74rem;padding:8px 16px;border-radius:20px;cursor:pointer;}
+
+  /* rest-day empty */
+  .restwork{padding:6px 2px;}
+  .circ{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line);font-size:.88rem;}
+  .circ:last-child{border-bottom:none;}
+  .circ .rx{color:var(--accent);font-weight:700;font-size:.8rem;}
+  .rounds{text-align:center;color:var(--muted);font-size:.8rem;margin-top:10px;}
+
+  #saved{position:fixed;left:50%;transform:translateX(-50%) translateY(20px);
+    bottom:calc(env(safe-area-inset-bottom) + 18px);
+    background:var(--done);color:#0f131b;font-weight:800;font-size:.8rem;
+    padding:9px 18px;border-radius:22px;box-shadow:0 4px 16px rgba(0,0,0,.4);
+    opacity:0;pointer-events:none;transition:.25s;z-index:50;}
+  #saved.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  #saved.warn{background:#e8944a;}
+
+  /* ---- Auth / sync additions ---- */
+  #authScreen{position:fixed;inset:0;background:var(--bg);z-index:200;display:none;
+    flex-direction:column;align-items:center;justify-content:center;padding:28px;text-align:center;}
+  #authScreen.show{display:flex;}
+  #authScreen .logo{font-size:.72rem;letter-spacing:.22em;text-transform:uppercase;color:var(--faint);font-weight:700;}
+  #authScreen h2{font-size:1.5rem;font-weight:800;margin:.4rem 0 .2rem;}
+  #authScreen p{color:var(--muted);font-size:.86rem;line-height:1.5;max-width:320px;margin:0 0 22px;}
+  #authScreen input{width:100%;max-width:340px;background:var(--panel2);border:1px solid var(--line);
+    color:var(--ink);border-radius:12px;padding:15px;font-size:1rem;text-align:center;margin-bottom:12px;}
+  #authScreen button{width:100%;max-width:340px;background:var(--accent);color:#0f131b;border:none;
+    border-radius:12px;padding:15px;font-size:1rem;font-weight:800;cursor:pointer;}
+  #authScreen button:disabled{opacity:.5;}
+  #authMsg{margin-top:16px;font-size:.84rem;min-height:20px;}
+  #authMsg.ok{color:var(--done);} #authMsg.err{color:#e8944a;}
+  .signout{display:block;margin:20px auto 0;background:none;border:1px solid var(--line);
+    color:var(--faint);font-size:.72rem;padding:7px 16px;border-radius:20px;cursor:pointer;}
+  .syncbadge{display:inline-block;font-size:.64rem;font-weight:800;letter-spacing:.06em;
+    padding:3px 8px;border-radius:20px;margin-left:6px;vertical-align:middle;}
+  .syncbadge.online{background:rgba(94,194,126,.16);color:var(--done);}
+  .syncbadge.offline{background:rgba(232,148,74,.16);color:#e8944a;}
+
+</style>
+</head>
+<body>
+<div id="authScreen">
+  <div class="logo">75 Hard · Complete Calisthenics</div>
+  <h2 id="authTitle">Sign in</h2>
+  <p id="authIntro">Enter your email and password. Your training log syncs to your account.</p>
+  <input id="authEmail" type="email" inputmode="email" autocomplete="email" placeholder="you@email.com">
+  <input id="authPass" type="password" autocomplete="current-password" placeholder="Password (min 6 chars)">
+  <button id="authBtn">Sign in</button>
+  <button id="toggleMode" style="background:none;color:var(--muted);border:1px solid var(--line);margin-top:10px;">Create an account</button>
+  <div id="authMsg"></div>
+</div>
+
+<div class="wrap">
+  <header>
+    <div class="kicker">75 Hard · Complete Calisthenics</div>
+    <h1>Daily Training</h1>
+    <div class="sub" id="today"></div>
+  </header>
+
+  <div class="days" id="days"></div>
+  <div id="content"></div>
+
+  <button class="resetbtn" id="reset">Clear this day's logged reps</button>
+  <p class="note">Reps save automatically to this browser on this device. Open the app the same way each time (Home Screen icon). Avoid private/incognito mode, and don't clear site data — that erases your log.</p>
+</div>
+<div id="saved">Saved ✓</div>
+
+<script>
+const WARMUP = [
+  ["Wrist circles + floor presses","1 min"],
+  ["Arm circles (fwd/back)","20 ea"],
+  ["Shoulder dislocates (band/towel)","10–15"],
+  ["Scapular push-ups","10"],
+  ["Scapular hangs","3×10s"],
+  ["Cat-cow","10"],
+  ["Hip circles + deep squat hold","30s"],
+  ["Leg swings (front/side)","10 ea"],
+];
+
+const PUSH = {
+  work:[
+    {id:"pushups",name:"Push-ups",target:"3 sets · max clean reps",cue:"Stop 1–2 reps before failure. Full range, elbows ~45°."},
+    {id:"dips",name:"Box / triceps dips",target:"3 sets · max clean reps",cue:"Shoulders down, controlled descent."},
+    {id:"squats",name:"Squats / lunges",target:"3 sets · max clean reps",cue:"Full depth, knees tracking toes."},
+  ],
+  stretch:[
+    ["Doorway chest stretch","30s"],
+    ["Overhead triceps","30s ea"],
+    ["Standing quad","30s ea"],
+    ["Couch stretch (hip flexors)","30s ea"],
+  ],
+};
+const PULL = {
+  work:[
+    {id:"rows",name:"Rows / chin-ups",target:"3 sets · max clean reps",cue:"Lead with elbows, full hang at bottom."},
+    {id:"core",name:"Plank / leg raise / hanging knee raise",target:"3 sets · max clean reps",cue:"Brace hard, no swinging."},
+  ],
+  stretch:[
+    ["Dead hang","2×20–30s"],
+    ["Lat stretch (kneeling)","30s ea"],
+    ["Biceps/forearm wall stretch","30s ea"],
+    ["Child's pose","30s"],
+  ],
+};
+const RECOVERY = {
+  circuit:[
+    ["Jumping jacks","45s"],
+    ["Mountain climbers","30s"],
+    ["High knees","45s"],
+    ["Bodyweight squats","20"],
+    ["Plank hold","30–45s"],
+    ["Shadow boxing / step-ups","60s"],
+  ],
+  stretch:[
+    ["Dead hang","20–30s"],
+    ["Doorway chest","30s"],
+    ["Overhead triceps + lat","30s ea"],
+    ["Quad / couch stretch","30s ea"],
+    ["Seated hamstring","30s"],
+    ["Child's pose","30s"],
+    ["Figure-4 glute","30s ea"],
+  ],
+};
+
+const DAYS = [
+  {d:"Mon",focus:"Push",data:PUSH},
+  {d:"Tue",focus:"Pull",data:PULL},
+  {d:"Wed",focus:"Recovery",data:RECOVERY},
+  {d:"Thu",focus:"Push",data:PUSH},
+  {d:"Fri",focus:"Pull",data:PULL},
+  {d:"Sat",focus:"Recovery",data:RECOVERY},
+  {d:"Sun",focus:"Recovery",data:RECOVERY},
+];
+const FULL={Mon:"Monday",Tue:"Tuesday",Wed:"Wednesday",Thu:"Thursday",Fri:"Friday",Sat:"Saturday",Sun:"Sunday"};
+
+let state = {};          // { "YYYY-MM-DD": { pushups:[r,r,r], _done:bool } }
+let current = 0;          // index into DAYS (weekday tab)
+let viewDate = null;      // ISO date string of the day being viewed
+let sb = null;            // supabase client
+let user = null;
+let online = true;
+
+// ---- Supabase config ----
+const SUPABASE_URL = "https://aqbufgwvlrtegoflqrwl.supabase.co";
+const SUPABASE_KEY = "sb_publishable_1vID-paB_RrmUk5XThwS-g_Qs05BLGH";
+const CACHE_KEY = "calisthenics-75hard-cache-v2";
+
+// ---- date helpers ----
+function isoOf(dt){ return dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0")+"-"+String(dt.getDate()).padStart(2,"0"); }
+// Given the currently selected weekday tab, return the ISO date of that weekday
+// in the CURRENT week (Mon-anchored), so each tab maps to a real calendar date.
+function dateForTab(idx){
+  const today = new Date();
+  const jsDow = today.getDay();               // 0=Sun..6=Sat
+  const mondayOffset = (jsDow === 0 ? -6 : 1 - jsDow);
+  const monday = new Date(today); monday.setDate(today.getDate()+mondayOffset);
+  const d = new Date(monday); d.setDate(monday.getDate()+idx);
+  return isoOf(d);
+}
+
+// ---- local cache (offline fallback) ----
+function loadCache(){
+  try{ const r=localStorage.getItem(CACHE_KEY); if(r) state=JSON.parse(r); }catch(e){ state={}; }
+}
+function writeCache(){
+  try{ localStorage.setItem(CACHE_KEY, JSON.stringify(state)); }catch(e){}
+}
+
+function showErr(where, e){
+  try{
+    const msg = (e && (e.message || e.error_description || e.hint || e.details)) || JSON.stringify(e);
+    const code = e && (e.code || e.status) ? " ["+(e.code||e.status)+"]" : "";
+    let bar=document.getElementById("dbgbar");
+    if(!bar){
+      bar=document.createElement("div"); bar.id="dbgbar";
+      bar.style.cssText="position:fixed;left:0;right:0;bottom:0;z-index:300;background:#3a1d1d;color:#ffd7d7;"
+        +"font:12px/1.4 monospace;padding:10px 12px;border-top:2px solid #e8944a;max-height:40vh;overflow:auto;white-space:pre-wrap;";
+      const x=document.createElement("button");
+      x.textContent="✕"; x.style.cssText="float:right;background:none;border:none;color:#ffd7d7;font-size:16px;";
+      x.onclick=()=>bar.remove();
+      bar.appendChild(x);
+      document.body.appendChild(bar);
+    }
+    const line=document.createElement("div");
+    line.textContent = where+code+": "+msg;
+    bar.appendChild(line);
+    console.error(where, e);
+  }catch(_){}
+}
+function flashSaved(text, warn){
+  const s=document.getElementById("saved"); if(!s) return;
+  s.textContent = text || "Saved ✓";
+  s.classList.toggle("warn", !!warn);
+  s.classList.add("show");
+  clearTimeout(flashSaved._t);
+  flashSaved._t=setTimeout(()=>s.classList.remove("show"),1200);
+}
+
+// ---- cloud writes ----
+async function pushSet(dateISO, day, exid, setIdx, reps){
+  writeCache();
+  if(!online || !user){ flashSaved("Saved offline", true); return; }
+  try{
+    const { error } = await sb.from("workout_log").upsert({
+      user_id:user.id, log_date:dateISO, day:day,
+      exercise_id:exid, set_index:setIdx, reps:reps, updated_at:new Date().toISOString()
+    }, { onConflict:"user_id,log_date,exercise_id,set_index" });
+    if(error) throw error;
+    flashSaved("Saved ✓");
+  }catch(e){ showErr("SET", e); flashSaved("Saved offline", true); online=false; updateSyncBadge(); }
+}
+async function pushStatus(dateISO, day, done){
+  writeCache();
+  if(!online || !user){ flashSaved("Saved offline", true); return; }
+  try{
+    const { error } = await sb.from("day_status").upsert({
+      user_id:user.id, log_date:dateISO, day:day, completed:done, updated_at:new Date().toISOString()
+    }, { onConflict:"user_id,log_date" });
+    if(error) throw error;
+    flashSaved("Saved ✓");
+  }catch(e){ showErr("STATUS", e); flashSaved("Saved offline", true); online=false; updateSyncBadge(); }
+}
+async function deleteDay(dateISO){
+  writeCache();
+  if(!online || !user) return;
+  try{
+    await sb.from("workout_log").delete().eq("user_id",user.id).eq("log_date",dateISO);
+    await sb.from("day_status").delete().eq("user_id",user.id).eq("log_date",dateISO);
+  }catch(e){ online=false; updateSyncBadge(); }
+}
+
+// ---- cloud read: pull the current week into state ----
+async function pullWeek(){
+  if(!user) return;
+  const dates = DAYS.map((_,i)=>dateForTab(i));
+  try{
+    const { data:logs, error:e1 } = await sb.from("workout_log")
+      .select("log_date,exercise_id,set_index,reps").in("log_date", dates);
+    if(e1) throw e1;
+    const { data:stat, error:e2 } = await sb.from("day_status")
+      .select("log_date,completed").in("log_date", dates);
+    if(e2) throw e2;
+    // rebuild state for these dates from cloud (cloud is source of truth on load)
+    dates.forEach(d=>{ if(state[d]) delete state[d]; });
+    (logs||[]).forEach(r=>{
+      if(!state[r.log_date]) state[r.log_date]={};
+      if(!state[r.log_date][r.exercise_id]) state[r.log_date][r.exercise_id]=[0,0,0];
+      state[r.log_date][r.exercise_id][r.set_index]=r.reps;
+    });
+    (stat||[]).forEach(r=>{
+      if(!state[r.log_date]) state[r.log_date]={};
+      state[r.log_date]._done = r.completed;
+    });
+    writeCache();
+    online=true;
+  }catch(e){ showErr("PULL", e); online=false; }
+  updateSyncBadge();
+}
+
+function updateSyncBadge(){
+  const b=document.getElementById("syncBadge");
+  if(!b) return;
+  b.className="syncbadge "+(online?"online":"offline");
+  b.textContent = online ? "Synced" : "Offline";
+}
+
+function dayHasData(dateISO){
+  const s = state[dateISO]; if(!s) return false;
+  return Object.keys(s).some(k=>k!=="_done" && Array.isArray(s[k]) && s[k].some(v=>v>0)) || s._done;
+}
+
+function renderDays(){
+  const el = document.getElementById("days");
+  el.innerHTML = DAYS.map((x,i)=>`
+    <div class="day ${i===current?'active':''} ${dayHasData(dateForTab(i))?'hasdata':''}"
+         data-focus="${x.focus}" data-i="${i}">
+      <div class="d">${x.d}</div>
+      <div class="f">${x.focus==="Recovery"?"Recov":x.focus}</div>
+      <span class="dot"></span>
+    </div>`).join("");
+  el.querySelectorAll(".day").forEach(d=>d.onclick=()=>{current=+d.dataset.i;render();});
+}
+
+function warmupCard(){
+  return `<div class="section">
+    <div class="sechead"><span class="num">01</span><h2>Warm-up</h2><span class="line"></span></div>
+    <div class="card"><ul class="movelist">
+      ${WARMUP.map(([m,r])=>`<li><span class="mv">${m}</span><span class="rx">${r}</span></li>`).join("")}
+    </ul></div></div>`;
+}
+function stretchCard(list){
+  return `<div class="section">
+    <div class="sechead"><span class="num">03</span><h2>Cool-down</h2><span class="line"></span></div>
+    <div class="card"><ul class="movelist">
+      ${list.map(([m,r])=>`<li><span class="mv">${m}</span><span class="rx">${r}</span></li>`).join("")}
+    </ul></div></div>`;
+}
+
+function exerciseCard(dateISO,ex){
+  const saved = (state[dateISO] && state[dateISO][ex.id]) || [0,0,0];
+  const sets = [0,1,2].map(i=>`
+    <div class="setrow">
+      <span class="setlbl">Set ${i+1}</span>
+      <div class="stepper">
+        <button data-act="dec" data-ex="${ex.id}" data-set="${i}">−</button>
+        <input type="number" inputmode="numeric" pattern="[0-9]*" min="0" value="${saved[i]||''}"
+               placeholder="0" data-ex="${ex.id}" data-set="${i}">
+        <button data-act="inc" data-ex="${ex.id}" data-set="${i}">+</button>
+      </div>
+    </div>`).join("");
+  const total = saved.reduce((a,b)=>a+(+b||0),0);
+  const allHit = saved.every(v=>(+v)>=15);
+  return `<div class="card" data-exid="${ex.id}">
+    <div class="ex-name">${ex.name}</div>
+    <div class="ex-target">${ex.target}</div>
+    <div class="ex-cue">${ex.cue}</div>
+    <div class="sets">${sets}</div>
+    <div class="exfoot">
+      <span class="total">Total <b data-total="${ex.id}">${total}</b> reps</span>
+      <span class="advance ${allHit?'show':''}" data-adv="${ex.id}">Ready to advance ↑</span>
+    </div>
+  </div>`;
+}
+
+function workSection(dateISO,data){
+  return `<div class="section">
+    <div class="sechead"><span class="num">02</span><h2>Workout</h2><span class="line"></span></div>
+    ${data.work.map(ex=>exerciseCard(dateISO,ex)).join("")}
+  </div>`;
+}
+
+function recoverySection(data){
+  return `<div class="section">
+    <div class="sechead"><span class="num">02</span><h2>Conditioning</h2><span class="line"></span></div>
+    <div class="card">
+      <div class="ex-name">Conditioning circuit</div>
+      <div class="ex-target">3–4 rounds · 60s rest · easy–moderate</div>
+      <div class="restwork" style="margin-top:10px">
+        ${data.circuit.map(([m,r])=>`<div class="circ"><span>${m}</span><span class="rx">${r}</span></div>`).join("")}
+      </div>
+      <div class="rounds">Keep it conversational — this aids recovery, it isn't a second strength session.</div>
+    </div>
+  </div>`;
+}
+
+function render(){
+  renderDays();
+  const day = DAYS[current];
+  viewDate = dateForTab(current);
+  const s = state[viewDate] || {};
+  const isRec = day.focus==="Recovery";
+  const dObj = new Date(viewDate+"T00:00:00");
+  const dateLabel = dObj.toLocaleDateString(undefined,{day:'numeric',month:'short'});
+  const c = document.getElementById("content");
+  c.innerHTML = `
+    <div class="banner">
+      <span class="badge ${day.focus}">${day.focus==="Recovery"?"Active Recovery":day.focus}</span>
+      <div><div class="t">${FULL[day.d]} · ${dateLabel}</div>
+      <div class="n">${isRec?"~45 min · warm-up → circuit → stretch":"Warm-up → strength → stretch"}</div></div>
+    </div>
+    ${warmupCard()}
+    ${isRec?recoverySection(day.data):workSection(viewDate,day.data)}
+    ${stretchCard(day.data.stretch)}
+    <button class="complete ${s._done?'on':''}" id="complete">
+      <span class="box"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5L20 6" stroke="#0f131b" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      ${s._done?"Day complete":"Mark day complete"}
+    </button>`;
+  bind(viewDate, day.d);
+}
+
+function setVal(dateISO,day,exid,setIdx,val){
+  if(!state[dateISO]) state[dateISO]={};
+  if(!state[dateISO][exid]) state[dateISO][exid]=[0,0,0];
+  const v = Math.max(0, val||0);
+  state[dateISO][exid][setIdx] = v;
+  pushSet(dateISO, day, exid, setIdx, v);
+}
+
+function refreshTotals(dateISO,exid){
+  const arr = (state[dateISO]&&state[dateISO][exid])||[0,0,0];
+  const t = arr.reduce((a,b)=>a+(+b||0),0);
+  const tEl = document.querySelector(`[data-total="${exid}"]`);
+  if(tEl) tEl.textContent = t;
+  const adv = document.querySelector(`[data-adv="${exid}"]`);
+  if(adv) adv.classList.toggle("show", arr.every(v=>(+v)>=15));
+}
+
+function bind(dateISO, day){
+  document.querySelectorAll('.stepper input').forEach(inp=>{
+    inp.oninput = ()=>{
+      let v = parseInt(inp.value)||0; if(v<0){v=0;inp.value=0;}
+      setVal(dateISO,day,inp.dataset.ex,+inp.dataset.set,v);
+      refreshTotals(dateISO,inp.dataset.ex);
+      renderDayDots();
+    };
+  });
+  document.querySelectorAll('.stepper button').forEach(btn=>{
+    btn.onclick=()=>{
+      const exid=btn.dataset.ex,si=+btn.dataset.set;
+      const inp=document.querySelector(`input[data-ex="${exid}"][data-set="${si}"]`);
+      let v=parseInt(inp.value)||0;
+      v += btn.dataset.act==="inc"?1:-1; if(v<0)v=0;
+      inp.value=v||'';
+      setVal(dateISO,day,exid,si,v);
+      refreshTotals(dateISO,exid);
+      renderDayDots();
+    };
+  });
+  const comp=document.getElementById("complete");
+  comp.onclick=()=>{
+    if(!state[dateISO]) state[dateISO]={};
+    state[dateISO]._done = !state[dateISO]._done;
+    pushStatus(dateISO, day, state[dateISO]._done);
+    render();
+  };
+}
+
+function renderDayDots(){
+  document.querySelectorAll(".day").forEach(d=>{
+    d.classList.toggle("hasdata", dayHasData(dateForTab(+d.dataset.i)));
+  });
+}
+
+document.getElementById("reset").onclick=()=>{
+  const dateISO=dateForTab(current);
+  if(state[dateISO]){ delete state[dateISO]; deleteDay(dateISO); render(); }
+};
+
+// ---- header date + default to current weekday ----
+(function initToday(){
+  const now=new Date();
+  const map=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  const wd=map[now.getDay()];
+  const idx=DAYS.findIndex(x=>x.d===wd);
+  if(idx>=0) current=idx;
+  document.getElementById("today").innerHTML =
+    now.toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'}) +
+    ' <span id="syncBadge" class="syncbadge offline">Offline</span>';
+})();
+
+// ================= AUTH FLOW (6-digit code) =================
+
+function showApp(show){
+  document.getElementById("authScreen").classList.toggle("show", !show);
+  document.querySelector(".wrap").style.display = show ? "" : "none";
+}
+function authMsg(text, cls){
+  const m=document.getElementById("authMsg");
+  m.className = cls||""; m.textContent = text||"";
+}
+
+async function initAuth(){
+  loadCache();
+  sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY,
+    { auth:{ persistSession:true, autoRefreshToken:true } });
+
+  const { data:{ session } } = await sb.auth.getSession();
+  user = session ? session.user : null;
+
+  sb.auth.onAuthStateChange((_evt, sess)=>{
+    const wasUser = !!user;
+    user = sess ? sess.user : null;
+    if(user && !wasUser){ showApp(true); afterLogin(); }
+    if(!user){ showApp(false); }
+  });
+
+  if(user){ showApp(true); afterLogin(); }
+  else { showApp(false); render(); }
+}
+
+async function afterLogin(){
+  if(!document.getElementById("signOut")){
+    const b=document.createElement("button");
+    b.id="signOut"; b.className="signout"; b.textContent="Sign out";
+    b.onclick=doSignOut;
+    document.querySelector(".wrap").appendChild(b);
+  }
+  render();
+  await pullWeek();
+  render();
+}
+
+async function doSignOut(){
+  try{ await sb.auth.signOut(); }catch(e){}
+  // hard-clear any lingering supabase tokens so we never get a stuck session
+  try{
+    Object.keys(localStorage).forEach(k=>{
+      if(k.startsWith("sb-") || k.includes("supabase")) localStorage.removeItem(k);
+    });
+  }catch(e){}
+  location.reload();
+}
+
+// ---- email + password handlers ----
+let signupMode = false;
+
+function setMode(signup){
+  signupMode = signup;
+  document.getElementById("authTitle").textContent = signup ? "Create account" : "Sign in";
+  document.getElementById("authIntro").textContent = signup
+    ? "Choose an email and password (min 6 characters). This creates your private account."
+    : "Enter your email and password. Your training log syncs to your account.";
+  document.getElementById("authBtn").textContent = signup ? "Create account" : "Sign in";
+  document.getElementById("toggleMode").textContent = signup ? "I already have an account" : "Create an account";
+  document.getElementById("authPass").setAttribute("autocomplete", signup ? "new-password" : "current-password");
+  authMsg("","");
+}
+
+document.getElementById("toggleMode").onclick = ()=> setMode(!signupMode);
+
+document.getElementById("authBtn").onclick = async ()=>{
+  const email=document.getElementById("authEmail").value.trim();
+  const pass=document.getElementById("authPass").value;
+  if(!email || !email.includes("@")){ authMsg("Enter a valid email.","err"); return; }
+  if(!pass || pass.length<6){ authMsg("Password must be at least 6 characters.","err"); return; }
+  const btn=document.getElementById("authBtn");
+  btn.disabled=true; authMsg(signupMode?"Creating account…":"Signing in…","");
+  try{
+    if(signupMode){
+      const { data, error } = await sb.auth.signUp({ email, password:pass });
+      if(error) throw error;
+      // If email confirmation is OFF, a session is returned immediately.
+      if(data.session){
+        authMsg("Account created!","ok");   // onAuthStateChange flips to app
+      } else {
+        // confirmation required: try an immediate sign-in in case it's allowed
+        const { error:e2 } = await sb.auth.signInWithPassword({ email, password:pass });
+        if(e2){ authMsg("Account created. If sign-in fails, disable 'Confirm email' in Supabase → Auth → Providers → Email.","ok"); }
+      }
+    } else {
+      const { error } = await sb.auth.signInWithPassword({ email, password:pass });
+      if(error) throw error;
+      authMsg("Signed in!","ok");            // onAuthStateChange flips to app
+    }
+  }catch(e){
+    let m = e.message || "Something went wrong.";
+    if(/invalid login/i.test(m)) m = "Wrong email or password.";
+    if(/already registered/i.test(m)) m = "That email already has an account — switch to Sign in.";
+    authMsg(m,"err");
+  }finally{ btn.disabled=false; }
+};
+
+document.getElementById("authPass").addEventListener("keydown",e=>{
+  if(e.key==="Enter") document.getElementById("authBtn").click();
+});
+document.getElementById("authEmail").addEventListener("keydown",e=>{
+  if(e.key==="Enter") document.getElementById("authPass").focus();
+});
+
+initAuth();
+
+</script>
+</body>
+</html>
