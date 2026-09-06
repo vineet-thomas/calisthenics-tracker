@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0f131b">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Calisthenics">
+<title>Calisthenics · 75 Hard</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<style>
+  :root{
+    --bg:#0f131b; --panel:#161b26; --panel2:#1d2432; --line:#2a3242;
+    --ink:#eef2f8; --muted:#8a94a6; --faint:#5b6577;
+    --push:#4f8ff0; --pull:#5ec27e; --rec:#e8944a;
+    --accent:#f0c14f; --done:#5ec27e;
+    --radius:16px;
+    --shadow:0 2px 12px rgba(0,0,0,.35);
+    font-size:16px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;}
+  body{padding-bottom:96px;}
+  .wrap{max-width:560px;margin:0 auto;padding:0 14px;}
+
+  /* Header */
+  header{padding:calc(env(safe-area-inset-top) + 18px) 0 12px;text-align:center;}
