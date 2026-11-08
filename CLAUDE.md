@@ -14,10 +14,22 @@ publishing. Everything must be verified at `localhost` before the PR is merged.
 ## Architecture (keep it this way unless asked)
 
 - `index.html` — the whole app: markup, CSS and one inline `<script>`. No build step, no framework.
-  ~1,750 lines. The training programme lives in constants between roughly lines 310 and 430.
+  ~2,100 lines. The training programme lives in constants between roughly lines 370 and 530.
 - `manifest.webmanifest` + icons — PWA install assets.
-- **No service worker.** Do not add one without asking: it would cache the app shell and make
-  every future release invisible until the cache expires, on a site that has no preview to catch it.
+- `sw.js` — service worker so the app opens with no signal (added 1.3.0, owner-approved).
+  **It must stay network-first.** Online, every load fetches the latest files (revalidated), so a
+  release shows immediately; the saved copy is used only when the network fails or takes over
+  4 s. Never make it cache-first: on a site with no preview, that would hide releases. It must
+  never handle Supabase requests. Bump `CACHE` only when the `SHELL`/`CDN` lists change.
+  **Kill switch** if it ever misbehaves — replace `sw.js` entirely with this and publish; every
+  device drops the saved copy on its next open (no fetch handler, no reload, so no loop):
+  ```js
+  self.addEventListener("install", ()=>self.skipWaiting());
+  self.addEventListener("activate", e=>e.waitUntil((async()=>{
+    for(const k of await caches.keys()) await caches.delete(k);
+    await self.registration.unregister();
+  })()));
+  ```
 - Supabase for auth, data and storage. Offline-first: writes queue locally and flush on reconnect.
 
 ### Tables this app owns
@@ -40,7 +52,7 @@ their schema, and never write to them from here.
 3. **Every release bumps `APP_VERSION`** (semver) in index.html.
 4. **Run the check before committing:**
    ```bash
-   node -e "const fs=require('fs');const h=fs.readFileSync('index.html','utf8');[...h.matchAll(/<script>([\s\S]*?)<\/script>/g)].forEach(m=>new Function(m[1]));JSON.parse(fs.readFileSync('manifest.webmanifest','utf8'));console.log('OK')"
+   node -e "const fs=require('fs');const h=fs.readFileSync('index.html','utf8');[...h.matchAll(/<script>([\s\S]*?)<\/script>/g)].forEach(m=>new Function(m[1]));new Function(fs.readFileSync('sw.js','utf8'));JSON.parse(fs.readFileSync('manifest.webmanifest','utf8'));console.log('OK')"
    ```
 5. **Test locally** with `python3 -m http.server 8000`. Check the changed day at 390 px width
    for overflow, and confirm the console is clean. Because there is no preview, this is the
