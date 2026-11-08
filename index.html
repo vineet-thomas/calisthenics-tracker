@@ -18,6 +18,7 @@
     --bg:#0f131b; --panel:#161b26; --panel2:#1d2432; --line:#2a3242;
     --ink:#eef2f8; --muted:#8a94a6; --faint:#5b6577;
     --push:#4f8ff0; --pull:#5ec27e; --rec:#e8944a;
+    --legs:#e0894a; --run:#8e6fd1; --rest:#7a8691;
     --accent:#f0c14f; --done:#5ec27e;
     --radius:16px;
     --shadow:0 2px 12px rgba(0,0,0,.35);
@@ -44,9 +45,12 @@
   .day .d{font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700;}
   .day .f{font-size:.64rem;margin-top:3px;font-weight:700;color:var(--faint);}
   .day.active{background:var(--panel2);border-color:transparent;box-shadow:var(--shadow);}
-  .day.active[data-focus="Push"]{border-bottom:3px solid var(--push);}
-  .day.active[data-focus="Pull"]{border-bottom:3px solid var(--pull);}
-  .day.active[data-focus="Recovery"]{border-bottom:3px solid var(--rec);}
+  .day.active[data-kind="push"]{border-bottom:3px solid var(--push);}
+  .day.active[data-kind="pull"]{border-bottom:3px solid var(--pull);}
+  .day.active[data-kind="legs"]{border-bottom:3px solid var(--legs);}
+  .day.active[data-kind="run"]{border-bottom:3px solid var(--run);}
+  .day.active[data-kind="rest"]{border-bottom:3px solid var(--rest);}
+  .day.active[data-kind="rec"]{border-bottom:3px solid var(--rec);}
   .day.active .d{color:var(--ink);}
   .dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-top:4px;background:transparent;}
   .day.hasdata .dot{background:var(--done);}
@@ -56,7 +60,8 @@
     margin-top:8px;background:var(--panel);border:1px solid var(--line);}
   .badge{font-size:.66rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
     padding:4px 9px;border-radius:20px;color:#0f131b;}
-  .badge.Push{background:var(--push);} .badge.Pull{background:var(--pull);} .badge.Recovery{background:var(--rec);}
+  .badge.k-push{background:var(--push);} .badge.k-pull{background:var(--pull);} .badge.k-legs{background:var(--legs);}
+  .badge.k-run{background:var(--run);} .badge.k-rest{background:var(--rest);} .badge.k-rec{background:var(--rec);}
   .banner .t{font-weight:700;font-size:.92rem;}
   .banner .n{color:var(--muted);font-size:.76rem;margin-top:1px;}
 
@@ -366,11 +371,11 @@ const WARMUP = [
 
 const PUSH = {
   work:[
-    {id:"pushups",name:"Push-ups",target:"3 sets · max clean reps",cue:"Stop 1–2 reps before failure. Full range, elbows ~45°."},
-    {id:"dips",name:"Box / triceps dips",target:"3 sets · max clean reps",cue:"Shoulders down, controlled descent.",assist:true},
-    {id:"squats",name:"Squats / lunges",target:"3 sets · max clean reps",cue:"Full depth, knees tracking toes."},
-    {id:"ohpress",name:"DB/KB Overhead Press",target:"3 sets · 6–10 reps",cue:"Press straight overhead, avoid arching lower back. Add weight when 10 reps feel clean for 2 sessions running.",loaded:true},
+    {id:"pushups",name:"Push-ups",target:"3 sets · 12–20 reps",cue:"Stop 1–2 reps before failure. Full range, elbows ~45°. When 3×20 is clean, add a weighted backpack or move to deficit / archer push-ups."},
+    {id:"dips",name:"Box / triceps dips",target:"3 sets · 10–15 reps",cue:"Shoulders down, controlled descent. When 3×15 is clean, add weight in a backpack.",assist:true},
+    {id:"ohpress",name:"DB/KB Overhead Press",target:"3 sets · 6–10 reps",cue:"Press straight overhead, avoid arching lower back. Add 2.5 kg when 10 reps feel clean two sessions running.",loaded:true},
     {id:"floorpress",name:"DB/KB Floor Press",target:"3 sets · 8–12 reps",cue:"Lie on floor/mat, press up, elbows stop just short of touching down.",loaded:true},
+    {id:"latraise",name:"Lateral Raise",target:"3 sets · 12–20 reps",cue:"Light, slow, lead with the elbows, stop at shoulder height. Shoulder width is most of what makes a lean frame read as muscular.",loaded:true},
   ],
   stretch:[
     ["Doorway chest stretch","30s"],
@@ -379,12 +384,29 @@ const PUSH = {
     ["Couch stretch (hip flexors)","30s ea"],
   ],
 };
+const LEGS = {
+  work:[
+    {id:"squats",name:"Goblet / DB Squat",target:"3 sets · 8–12 reps",cue:"One DB at the chest, or two at the shoulders. Full depth, knees tracking toes. Add 2.5 kg when 12 reps feel clean two sessions running.",loaded:true},
+    {id:"splitsquat",name:"Bulgarian Split Squat",target:"3 sets · 8–12 per side",cue:"Rear foot on a chair, a DB in each hand. Front shin near vertical, drive through the heel. Your heaviest available leg stimulus — 2×24 kg through one leg.",loaded:true},
+    {id:"rdl",name:"DB Romanian Deadlift",target:"3 sets · 8–12 reps",cue:"DBs in front of the thighs, soft knees, push the hips BACK — not down. Lower until the hamstrings stretch, then drive the hips forward. A four-second lowering makes a light load heavy.",loaded:true},
+    {id:"hipthrust",name:"Hip Thrust",target:"3 sets · 10–15 reps",cue:"Shoulder blades on a sofa or bench edge, DB across the hips. Squeeze the glutes hard at the top, 1s pause, chin tucked.",loaded:true},
+    {id:"calves",name:"Standing Calf Raise",target:"3 sets · 15–20 reps",cue:"DB in each hand, 1s pause at the top, full stretch at the bottom. Off a step if you have one.",loaded:true},
+    {id:"kbswings",name:"Kettlebell Swings",target:"3 sets · 15 reps",cue:"Hinge at the hips, snap the glutes forward at the top — a hinge, not a squat. Conditioning finisher; skip if short of time.",loaded:true},
+  ],
+  stretch:[
+    ["Couch stretch (hip flexors)","30s ea"],
+    ["Seated hamstring","30s ea"],
+    ["Figure-4 glute","30s ea"],
+    ["Standing calf against wall","30s ea"],
+  ],
+};
 const PULL = {
   work:[
-    {id:"rows",name:"Rows / chin-ups",target:"3 sets · max clean reps",cue:"Full dead hang at the bottom every rep, lead with elbows. Do negatives first (below) while fresh, then this as your assisted volume.",assist:true,negatives:true},
+    {id:"rows",name:"Rows / chin-ups",target:"3 sets · 8–15 reps",cue:"Full dead hang at the bottom every rep, lead with elbows. Negatives first while fresh, then this as assisted volume. When 3×15 is clean, reduce the assistance.",assist:true,negatives:true},
     {id:"scapulapull",name:"Scapula pull-ups",target:"3 sets · 8–10 reps",cue:"Dead hang, scapulae elevated to ears, pull scapulae down WITHOUT bending elbows. Builds the initiation strength most people miss on their first real pull-up."},
     {id:"dbrows",name:"DB/KB Rows",target:"3 sets · 8–12 per side",cue:"Flat back, pull elbow past hip, squeeze at top.",loaded:true},
-    {id:"kbswings",name:"Kettlebell Swings",target:"3–5 sets · 10–15 reps",cue:"Hinge at the hips, snap glutes forward at the top — this is a hinge, not a squat.",loaded:true},
+    {id:"reardelt",name:"Rear Delt Fly",target:"3 sets · 15–20 reps",cue:"Hinged at the hips, light DBs, lead with the elbows. Balances all the pressing and keeps the shoulders healthy.",loaded:true},
+    {id:"curl",name:"DB Curl",target:"3 sets · 10–15 reps",cue:"No swinging. Slow on the way down.",loaded:true},
     {id:"core",name:"Hanging leg raises / plank",target:"3 sets · 8–12 reps",cue:"Brace hard, no swinging. Add ankle weight once 12+ reps feel clean."},
   ],
   stretch:[
@@ -414,9 +436,36 @@ const RECOVERY = {
   ],
 };
 
-// Sunday-only: Kalym's Complete Calisthenics Ch.4 "Warming Up, Mobility
-// Exercises, and Flexibility" — actual book content (pp.37-55), replacing
-// the conditioning circuit entirely on this day.
+const RUNDAY = {
+  circuit:[
+    ["Run — see Garmin","per plan"],
+  ],
+  stretch:[
+    ["Standing quad","30s ea"],
+    ["Seated hamstring","30s ea"],
+    ["Couch stretch (hip flexors)","30s ea"],
+    ["Standing calf against wall","30s ea"],
+    ["Figure-4 glute","30s ea"],
+  ],
+};
+
+const REST = {
+  circuit:[
+    ["Easy walk, outdoors","30–45 min"],
+  ],
+  stretch:[
+    ["Dead hang","20–30s"],
+    ["Doorway chest","30s"],
+    ["Overhead triceps + lat","30s ea"],
+    ["Quad / couch stretch","30s ea"],
+    ["Seated hamstring","30s"],
+    ["Child's pose","30s"],
+    ["Figure-4 glute","30s ea"],
+  ],
+};
+
+// Fast and Rest days (Thu, Sun): Kalym's Complete Calisthenics Ch.4 "Warming Up, Mobility
+// Exercises, and Flexibility" — actual book content (pp.37-55).
 const MOBILITY_KALYM = {
   upper:[
     ["Scapula push-up","10 reps — push-up position, lower chest squeezing scapulae together, then round the back pushing scapulae apart. Elbows stay locked throughout."],
@@ -442,28 +491,37 @@ const MOBILITY_KALYM = {
 };
 
 const DAYS = [
-  {d:"Mon",focus:"Push",data:PUSH},
-  {d:"Tue",focus:"Pull",data:PULL},
-  {d:"Wed",focus:"Recovery",data:RECOVERY},
-  {d:"Thu",focus:"Push",data:PUSH},
-  {d:"Fri",focus:"Pull",data:PULL},
-  {d:"Sat",focus:"Recovery",data:RECOVERY},
-  {d:"Sun",focus:"Recovery",data:RECOVERY},
+  {d:"Mon",focus:"Push",   data:PUSH},
+  {d:"Tue",focus:"Tempo",  data:RUNDAY},
+  {d:"Wed",focus:"Legs",   data:LEGS},
+  {d:"Thu",focus:"Fast",   data:REST},
+  {d:"Fri",focus:"Pull",   data:PULL},
+  {d:"Sat",focus:"Long run",data:RUNDAY},
+  {d:"Sun",focus:"Rest",   data:REST},
 ];
+// day type → colour group: push / pull / legs are lifting days, runs are violet, fast and rest are slate
+const FOCUS_KIND = { Push:"push", Pull:"pull", Legs:"legs", Tempo:"run", "Long run":"run", Fast:"rest", Rest:"rest", Recovery:"rec" };
 const FULL={Mon:"Monday",Tue:"Tuesday",Wed:"Wednesday",Thu:"Thursday",Fri:"Friday",Sat:"Saturday",Sun:"Sunday"};
 
 // registry of strength exercises for the Progress charts
 const EX_REGISTRY = [
-  { id:"pushups", name:"Push-ups",            color:"#4f8ff0" },
-  { id:"dips",    name:"Box / triceps dips",  color:"#4f8ff0" },
-  { id:"squats",  name:"Squats / lunges",     color:"#4f8ff0" },
-  { id:"ohpress", name:"DB/KB Overhead Press",color:"#4f8ff0", loaded:true },
-  { id:"floorpress", name:"DB/KB Floor Press",color:"#4f8ff0", loaded:true },
-  { id:"rows",    name:"Rows / chin-ups",     color:"#5ec27e" },
-  { id:"scapulapull", name:"Scapula pull-ups", color:"#5ec27e" },
-  { id:"dbrows",  name:"DB/KB Rows",          color:"#5ec27e", loaded:true },
-  { id:"kbswings",name:"Kettlebell Swings",   color:"#5ec27e", loaded:true },
-  { id:"core",    name:"Hanging leg raises",  color:"#5ec27e" },
+  { id:"pushups",    name:"Push-ups",              color:"#4f8ff0" },
+  { id:"dips",       name:"Box / triceps dips",    color:"#4f8ff0" },
+  { id:"ohpress",    name:"DB/KB Overhead Press",  color:"#4f8ff0", loaded:true },
+  { id:"floorpress", name:"DB/KB Floor Press",     color:"#4f8ff0", loaded:true },
+  { id:"latraise",   name:"Lateral Raise",         color:"#4f8ff0", loaded:true },
+  { id:"rows",       name:"Rows / chin-ups",       color:"#5ec27e" },
+  { id:"scapulapull",name:"Scapula pull-ups",      color:"#5ec27e" },
+  { id:"dbrows",     name:"DB/KB Rows",            color:"#5ec27e", loaded:true },
+  { id:"reardelt",   name:"Rear Delt Fly",         color:"#5ec27e", loaded:true },
+  { id:"curl",       name:"DB Curl",               color:"#5ec27e", loaded:true },
+  { id:"core",       name:"Hanging leg raises",    color:"#5ec27e" },
+  { id:"squats",     name:"Goblet / DB Squat",     color:"#e0894a", loaded:true },
+  { id:"splitsquat", name:"Bulgarian Split Squat", color:"#e0894a", loaded:true },
+  { id:"rdl",        name:"DB Romanian Deadlift",  color:"#e0894a", loaded:true },
+  { id:"hipthrust",  name:"Hip Thrust",            color:"#e0894a", loaded:true },
+  { id:"calves",     name:"Standing Calf Raise",   color:"#e0894a", loaded:true },
+  { id:"kbswings",   name:"Kettlebell Swings",     color:"#e0894a", loaded:true },
 ];
 const ADVANCE_TOTAL = 45; // 15 reps x 3 sets = ready to progress
 
@@ -527,7 +585,7 @@ let online = true;
 const SUPABASE_URL = "https://aqbufgwvlrtegoflqrwl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_1vID-paB_RrmUk5XThwS-g_Qs05BLGH";
 const CACHE_KEY = "calisthenics-75hard-cache-v2";
-const APP_VERSION = "1.1.1";
+const APP_VERSION = "1.2.0";
 const DEBUG = new URLSearchParams(location.search).has("debug");
 let lastError = null;   // most recent captured error, for the feedback form
 
@@ -1000,7 +1058,7 @@ function renderDays(){
   const el = document.getElementById("days");
   el.innerHTML = DAYS.map((x,i)=>`
     <div class="day ${i===current?'active':''} ${dayHasData(dateForTab(i))?'hasdata':''}"
-         data-focus="${x.focus}" data-i="${i}">
+         data-kind="${FOCUS_KIND[x.focus]}" data-i="${i}">
       <div class="d">${x.d}</div>
       <div class="f">${x.focus==="Recovery"?"Recov":x.focus}</div>
       <span class="dot"></span>
@@ -1008,9 +1066,9 @@ function renderDays(){
   el.querySelectorAll(".day").forEach(d=>d.onclick=()=>{current=+d.dataset.i;render();});
 }
 
-function warmupCard(){
+function warmupCard(num){
   return `<div class="section">
-    <div class="sechead"><span class="num">01</span><h2>Warm-up</h2><span class="line"></span></div>
+    <div class="sechead"><span class="num">${num||"01"}</span><h2>Warm-up</h2><span class="line"></span></div>
     <div class="card"><ul class="movelist">
       ${WARMUP.map(([m,r])=>`<li><span class="mv">${m}</span><span class="rx">${r}</span></li>`).join("")}
     </ul></div></div>`;
@@ -1080,16 +1138,16 @@ function exerciseCard(dateISO,ex){
   </div>`;
 }
 
-function workSection(dateISO,data){
+function workSection(dateISO,data,num){
   return `<div class="section">
-    <div class="sechead"><span class="num">02</span><h2>Workout</h2><span class="line"></span></div>
+    <div class="sechead"><span class="num">${num||"02"}</span><h2>Workout</h2><span class="line"></span></div>
     ${data.work.map(ex=>exerciseCard(dateISO,ex)).join("")}
   </div>`;
 }
 
-function recoverySection(data){
+function recoverySection(data,num){
   return `<div class="section">
-    <div class="sechead"><span class="num">02</span><h2>Conditioning</h2><span class="line"></span></div>
+    <div class="sechead"><span class="num">${num||"02"}</span><h2>Conditioning</h2><span class="line"></span></div>
     <div class="card">
       <div class="ex-name">Conditioning circuit</div>
       <div class="ex-target">3–4 rounds · 60s rest · easy–moderate</div>
@@ -1101,14 +1159,15 @@ function recoverySection(data){
   </div>`;
 }
 
-function touchSection(){
+// run and rest days carry a circuit instead of logged exercises (a single item is fine)
+function circuitSection(day, num){
+  const kind = FOCUS_KIND[day.focus];
+  if(kind==="rec") return recoverySection(day.data, num);
   return `<div class="section">
-    <div class="sechead"><span class="num">02</span><h2>Pull / Core Touch</h2><span class="line"></span></div>
-    <div class="card">
-      <div class="ex-name">Sunday touch (10–15 min)</div>
-      <div class="ex-target">Light band pull-ups 2×8–10 · Hanging leg raises 2×8–10</div>
-      <div class="ex-cue">Easy effort, not a full Pull session — just enough to keep the pull-up progression moving on your lightest day.</div>
-    </div>
+    <div class="sechead"><span class="num">${num}</span><h2>${kind==="run"?"Run":"Walk"}</h2><span class="line"></span></div>
+    <div class="card"><div class="restwork">
+      ${day.data.circuit.map(([m,r])=>`<div class="circ"><span>${m}</span><span class="rx">${r}</span></div>`).join("")}
+    </div></div>
   </div>`;
 }
 
@@ -1121,9 +1180,9 @@ function mobilityGroup(title, items){
   </div>`;
 }
 
-function mobilitySectionKalym(){
+function mobilitySectionKalym(num){
   return `<div class="section">
-    <div class="sechead"><span class="num">03</span><h2>Mobility &amp; Flexibility</h2><span class="line"></span></div>
+    <div class="sechead"><span class="num">${num||"03"}</span><h2>Mobility &amp; Flexibility</h2><span class="line"></span></div>
     <div class="card" style="border-color:var(--accent)">
       <div class="ex-name">From Kalym's Complete Calisthenics, Ch.4</div>
       <div class="ex-target">Foam roller needed for the rolling moves (armpit, spine, IT band, adductor, piriformis). No roller yet? A tennis/lacrosse ball works for the smaller areas (armpit, piriformis) — but this routine leans on one enough that it's worth owning.</div>
@@ -1144,7 +1203,14 @@ function render(){
 
   viewDate = dateForTab(current);
   const s = state[viewDate] || {};
-  const isRec = day.focus==="Recovery";
+  const kind = FOCUS_KIND[day.focus];
+  const isCircuit = !day.data.work;
+  const restDay = kind==="rest";   // Fast and Rest: no warm-up, Kalym mobility instead
+  let n = 0; const num = ()=>String(++n).padStart(2,"0");
+  const flow = restDay ? "Walk → mobility → stretch"
+             : kind==="run" ? "Warm-up → run → stretch"
+             : kind==="rec" ? "~45 min · warm-up → circuit → stretch"
+             : "Warm-up → strength → stretch";
   const dObj = new Date(viewDate+"T00:00:00");
   const dateLabel = dObj.toLocaleDateString(undefined,{day:'numeric',month:'short'});
   const c = document.getElementById("content");
@@ -1155,17 +1221,16 @@ function render(){
       ? `<div class="deload-banner">🔻 <b>Deload week</b> — intentionally lighter, not a missed session. <button onclick="toggleDeload()">Turn off</button></div>`
       : `<button class="deload-toggle" onclick="toggleDeload()">Mark this week as deload</button>`;
   }
-  const isSun = day.d==="Sun";
   c.innerHTML = `
     <div class="banner">
-      <span class="badge ${day.focus}">${day.focus==="Recovery"?"Active Recovery":day.focus}</span>
+      <span class="badge k-${kind}">${kind==="rec"?"Active Recovery":day.focus}</span>
       <div><div class="t">${FULL[day.d]} · ${dateLabel}</div>
-      <div class="n">${isSun?"~50 min · warm-up → touch → mobility → stretch":isRec?"~45 min · warm-up → circuit → stretch":"Warm-up → strength → stretch"}</div></div>
+      <div class="n">${flow}</div></div>
     </div>
-    ${warmupCard()}
-    ${isSun ? touchSection() : (isRec?recoverySection(day.data):workSection(viewDate,day.data))}
-    ${isSun?mobilitySectionKalym():""}
-    ${stretchCard(day.data.stretch, isSun?"04":"03")}
+    ${restDay ? "" : warmupCard(num())}
+    ${isCircuit ? circuitSection(day, num()) : workSection(viewDate, day.data, num())}
+    ${restDay ? mobilitySectionKalym(num()) : ""}
+    ${stretchCard(day.data.stretch, num())}
     <button class="complete ${s._done?'on':''}" id="complete">
       <span class="box"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5L20 6" stroke="#0f131b" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       ${s._done?"Day complete":"Mark day complete"}
