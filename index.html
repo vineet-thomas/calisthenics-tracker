@@ -240,6 +240,34 @@
     padding:3px 8px;border-radius:20px;margin-left:6px;vertical-align:middle;}
   .syncbadge.online{background:rgba(94,194,126,.16);color:var(--done);}
   .syncbadge.offline{background:rgba(232,148,74,.16);color:#e8944a;}
+  .syncbadge{cursor:pointer;}
+  .syncbadge.failed{background:rgba(239,107,107,.18);color:#ef6b6b;}
+  #storageWarn{display:none;align-items:center;gap:10px;margin:10px 0 0;padding:10px 12px;border-radius:12px;
+    background:rgba(232,148,74,.10);border:1px solid rgba(232,148,74,.45);font-size:.74rem;line-height:1.4;color:var(--ink);}
+  #storageWarn.show{display:flex;}
+  #storageWarn button{background:#e8944a;color:#0f131b;border:none;border-radius:8px;padding:7px 12px;
+    font-size:.74rem;font-weight:800;cursor:pointer;}
+  #syncModal{position:fixed;inset:0;z-index:250;background:rgba(0,0,0,.6);display:none;
+    align-items:center;justify-content:center;padding:20px;}
+  #syncModal.show{display:flex;}
+  #syncCard{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;
+    width:100%;max-width:400px;max-height:85vh;overflow-y:auto;box-shadow:var(--shadow);}
+  #syncCard h3{margin:0 0 6px;font-size:1.1rem;}
+  #syncCard p{margin:0 0 12px;font-size:.8rem;color:var(--muted);line-height:1.4;}
+  .syncrow{font-size:.76rem;line-height:1.4;background:var(--panel2);border:1px solid var(--line);
+    border-radius:10px;padding:9px 11px;}
+  .syncrow b{display:block;font-size:.7rem;letter-spacing:.04em;text-transform:uppercase;color:var(--faint);margin-bottom:2px;}
+  .syncrow span{color:var(--muted);}
+  .syncfailhead{margin:14px 0 6px;font-size:.8rem;font-weight:800;color:#ef6b6b;}
+  .syncfail{border:1px solid rgba(239,107,107,.4);border-radius:10px;padding:9px 11px;margin-bottom:8px;}
+  .syncfail .what{font-size:.8rem;font-weight:700;}
+  .syncfail .why{font-size:.72rem;color:var(--muted);margin:3px 0 7px;word-break:break-word;font-family:monospace;}
+  .syncfail button{background:none;border:1px solid var(--line);color:var(--muted);border-radius:8px;
+    padding:5px 10px;font-size:.72rem;cursor:pointer;}
+  #syncCard .row{display:flex;gap:10px;margin-top:14px;}
+  #syncCard .row button{flex:1;border-radius:10px;padding:12px;font-size:.86rem;font-weight:800;border:none;cursor:pointer;}
+  #syncClose{background:none;color:var(--muted);border:1px solid var(--line) !important;}
+  #syncRetry{background:var(--accent);color:#0f131b;}
 
 </style>
 </head>
@@ -261,6 +289,10 @@
     <h1>Daily Training</h1>
     <div class="sub" id="today"></div>
   </header>
+  <div id="storageWarn">
+    <span>⚠ This browser hasn't agreed to keep the app's data permanently, so entries not yet synced could be cleared if this device runs low on storage. Installing the app (Add to Home screen) usually fixes this.</span>
+    <button onclick="dismissStorageWarning()">OK</button>
+  </div>
 
   <div class="viewtabs-wrap at-start" id="viewtabsWrap">
     <div class="viewtabs" id="viewtabsScroll" onscroll="updateTabFade()">
@@ -295,6 +327,16 @@
 <div id="userErr">
   <span class="msg">Couldn't sync just now — your entry is saved on this device and will upload when the connection is back.</span>
   <button onclick="openFeedback()">Report</button>
+</div>
+<div id="syncModal">
+  <div id="syncCard">
+    <h3>Sync status</h3>
+    <div id="syncBody"></div>
+    <div class="row">
+      <button id="syncClose" onclick="closeSyncPanel()">Close</button>
+      <button id="syncRetry" onclick="retryFailed()">Retry failed</button>
+    </div>
+  </div>
 </div>
 <div id="fbModal">
   <div id="fbCard">
@@ -485,7 +527,7 @@ let online = true;
 const SUPABASE_URL = "https://aqbufgwvlrtegoflqrwl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_1vID-paB_RrmUk5XThwS-g_Qs05BLGH";
 const CACHE_KEY = "calisthenics-75hard-cache-v2";
-const APP_VERSION = "1.0.0";
+const APP_VERSION = "1.1.0";
 const DEBUG = new URLSearchParams(location.search).has("debug");
 let lastError = null;   // most recent captured error, for the feedback form
 
@@ -517,7 +559,7 @@ function errInfo(e){
   return { message, code };
 }
 
-async function captureError(context, e){
+async function captureError(context, e, quiet){
   const { message, code } = errInfo(e);
   lastError = { context, message, code, at: new Date().toISOString() };
   console.error("["+context+"]"+(code?" "+code:""), e);
@@ -533,7 +575,7 @@ async function captureError(context, e){
   }catch(_){ /* never let logging throw */ }
 
   if(DEBUG) showDevBar(context, code, message);
-  else showUserError();
+  else if(!quiet) showUserError();
 }
 
 function showDevBar(context, code, message){
@@ -603,82 +645,304 @@ function flashSaved(text, warn){
   flashSaved._t=setTimeout(()=>s.classList.remove("show"),1200);
 }
 
-// ---- cloud writes ----
-async function pushSet(dateISO, day, exid, setIdx, reps){
-  writeCache();
-  if(!online || !user){ flashSaved("Saved offline", true); return; }
-  try{
-    const { error } = await sb.from("workout_log").upsert({
-      user_id:user.id, log_date:dateISO, day:day,
-      exercise_id:exid, set_index:setIdx, reps:reps, updated_at:new Date().toISOString()
-    }, { onConflict:"user_id,log_date,exercise_id,set_index" });
-    if(error) throw error;
-    flashSaved("Saved ✓");
-    historyCache = null;
-  }catch(e){ captureError("SET", e); flashSaved("Saved offline", true); online=false; updateSyncBadge(); }
+// ---- outbox: every Train write is stored on the device first, then sent in order ----
+// Survives refreshes and network drops; entries leave the outbox only once the
+// cloud has accepted them, and pullWeek re-applies anything still pending.
+const OUTBOX_KEY = "calisthenics-outbox-v1";
+const OUTBOX_FAILED_KEY = "calisthenics-outbox-failed-v1";
+const STAMP_KEY = "calisthenics-last-stamp";
+const STORAGE_WARN_KEY = "calisthenics-storage-warn-dismissed";
+const NET_RETRY = { base:5000, cap:60000 };        // no connection / session refresh: retry forever
+const SERVER_RETRY = { base:30000, cap:900000 };   // Supabase errors: 30s doubling, max 15 min
+const PARK_AFTER_FAILS = 8;                        // server errors are set aside after 8 failed attempts
+const PARK_MIN_SPAN = 30*60*1000;                  // ...and never sooner than 30 min after the first
+let outbox = [];          // [{ t:"log"|"status"|"del", uid, date, day, ex, set, f:{...}, ts, rev, fails, firstFail }]
+let failed = [];          // entries the server refused: [{ op, status, code, message, at }]
+let flushPromise = null;
+let flushTimer = null;
+let netFails = 0;
+let pulling = false;
+let lastStamp = 0;
+let storagePersisted = null;  // true / false, or null when the browser can't say
+
+function loadOutbox(){
+  try{ outbox = JSON.parse(localStorage.getItem(OUTBOX_KEY)) || []; }catch(e){ outbox = []; }
+  try{ failed = JSON.parse(localStorage.getItem(OUTBOX_FAILED_KEY)) || []; }catch(e){ failed = []; }
+  lastStamp = +localStorage.getItem(STAMP_KEY) || 0;
 }
-async function pushAssist(dateISO, day, exid, assist){
-  writeCache();
-  if(!online || !user){ flashSaved("Saved offline", true); return; }
-  try{
-    // store assistance on the set_index 0 row for this exercise/date
-    const { error } = await sb.from("workout_log").upsert({
-      user_id:user.id, log_date:dateISO, day:day,
-      exercise_id:exid, set_index:0, assist:assist, updated_at:new Date().toISOString()
-    }, { onConflict:"user_id,log_date,exercise_id,set_index" });
-    if(error) throw error;
-    flashSaved("Saved ✓");
-  }catch(e){ captureError("ASSIST", e); flashSaved("Saved offline", true); online=false; updateSyncBadge(); }
+function saveOutbox(){
+  try{ localStorage.setItem(OUTBOX_KEY, JSON.stringify(outbox)); }catch(e){}
 }
-async function pushWeight(dateISO, day, exid, weight){
-  writeCache();
-  if(!online || !user){ flashSaved("Saved offline", true); return; }
-  try{
-    // store weight used on the set_index 0 row for this exercise/date
-    const { error } = await sb.from("workout_log").upsert({
-      user_id:user.id, log_date:dateISO, day:day,
-      exercise_id:exid, set_index:0, weight_kg:weight===""?null:(+weight), updated_at:new Date().toISOString()
-    }, { onConflict:"user_id,log_date,exercise_id,set_index" });
-    if(error) throw error;
-    flashSaved("Saved ✓");
-  }catch(e){ captureError("WEIGHT", e); flashSaved("Saved offline", true); online=false; updateSyncBadge(); }
+function saveFailed(){
+  try{ localStorage.setItem(OUTBOX_FAILED_KEY, JSON.stringify(failed)); }catch(e){}
 }
-async function pushNegatives(dateISO, day, exid, reps){
-  writeCache();
-  if(!online || !user){ flashSaved("Saved offline", true); return; }
-  try{
-    const { error } = await sb.from("workout_log").upsert({
-      user_id:user.id, log_date:dateISO, day:day,
-      exercise_id:exid, set_index:0, negatives:reps===""?null:(+reps), updated_at:new Date().toISOString()
-    }, { onConflict:"user_id,log_date,exercise_id,set_index" });
-    if(error) throw error;
-    flashSaved("Saved ✓");
-  }catch(e){ captureError("NEGATIVES", e); flashSaved("Saved offline", true); online=false; updateSyncBadge(); }
+function myOutbox(){ return user ? outbox.filter(o=>o.uid===user.id) : []; }
+function myFailed(){ return user ? failed.filter(x=>x.op.uid===user.id) : []; }
+function opKey(o){ return [o.uid,o.t,o.date,o.ex||"",o.set==null?"":o.set].join("|"); }
+
+// Edit-time stamp. Never goes backwards on this device, so its own edits always stay in
+// order even if the clock is nudged back; a clock running ahead is clamped by the database.
+function editStamp(){
+  const now = Date.now();
+  if(lastStamp > now + 10*60*1000) lastStamp = 0;   // clock was far ahead and has been corrected
+  lastStamp = Math.max(now, lastStamp + 1);
+  try{ localStorage.setItem(STAMP_KEY, String(lastStamp)); }catch(e){}
+  return new Date(lastStamp).toISOString();
 }
-async function pushStatus(dateISO, day, done){
+
+function enqueue(op){
   writeCache();
-  if(!online || !user){ flashSaved("Saved offline", true); return; }
-  try{
-    const { error } = await sb.from("day_status").upsert({
-      user_id:user.id, log_date:dateISO, day:day, completed:done, updated_at:new Date().toISOString()
+  if(!user){ flashSaved("Saved offline", true); return; }
+  op.uid = user.id;
+  op.ts = editStamp();
+  if(op.t==="del"){
+    outbox = outbox.filter(o=>!(o.uid===op.uid && o.date===op.date));
+  } else {
+    const k = opKey(op);
+    let hit = null;
+    for(let i=outbox.length-1;i>=0;i--){ if(opKey(outbox[i])===k){ hit=outbox[i]; break; } }
+    if(hit){
+      Object.assign(hit.f, op.f); hit.day = op.day; hit.ts = op.ts; hit.rev++;
+      saveOutbox(); afterEnqueue(); return;
+    }
+  }
+  op.rev = 1;
+  outbox.push(op);
+  saveOutbox(); afterEnqueue();
+}
+function afterEnqueue(){
+  if(!online) flashSaved("Saved offline", true);
+  updateSyncBadge();
+  const head = myOutbox()[0];
+  if(!(head && head.fails)) scheduleFlush(400);   // don't cut short a server back-off
+}
+function scheduleFlush(ms){
+  clearTimeout(flushTimer);
+  flushTimer = setTimeout(flushOutbox, ms);
+}
+function backoff(cfg, n){ return Math.min(cfg.base * Math.pow(2, n-1), cfg.cap); }
+
+async function sendOp(op){
+  if(op.t==="log"){
+    return sb.from("workout_log").upsert({
+      user_id:user.id, log_date:op.date, day:op.day,
+      exercise_id:op.ex, set_index:op.set, ...op.f, updated_at:op.ts
+    }, { onConflict:"user_id,log_date,exercise_id,set_index" });
+  }
+  if(op.t==="status"){
+    return sb.from("day_status").upsert({
+      user_id:user.id, log_date:op.date, day:op.day, ...op.f, updated_at:op.ts
     }, { onConflict:"user_id,log_date" });
-    if(error) throw error;
-    flashSaved("Saved ✓");
-  }catch(e){ captureError("STATUS", e); flashSaved("Saved offline", true); online=false; updateSyncBadge(); }
+  }
+  // "Clear this day" only removes rows that existed when it was pressed,
+  // never rows written afterwards (e.g. from another device)
+  const older = `updated_at.is.null,updated_at.lte."${op.ts}"`;
+  let res = await sb.from("workout_log").delete().eq("user_id",user.id).eq("log_date",op.date).or(older);
+  if(!res.error) res = await sb.from("day_status").delete().eq("user_id",user.id).eq("log_date",op.date).or(older);
+  return res;
 }
-async function deleteDay(dateISO){
-  writeCache();
-  if(!online || !user) return;
+
+// "net"    — no response, or the session needs refreshing: retry forever
+// "server" — Supabase is struggling (5xx, 408, 429): back off, set aside after 8 attempts / 30 min
+// "reject" — any other refusal (permissions, bad value, schema): set aside immediately
+function classify(res){
+  const s = res && res.status;
+  if(!s || s===401) return "net";
+  if(s===408 || s===429 || s>=500) return "server";
+  return "reject";
+}
+function park(op, res){
+  const { message, code } = errInfo(res.error);
+  delete op.fails; delete op.firstFail;
+  failed.push({ op, status:res.status||0, code, message, at:new Date().toISOString() });
+  saveFailed();
+  const i = outbox.indexOf(op);
+  if(i>=0){ outbox.splice(i,1); saveOutbox(); }
+  captureError("SYNC_REJECTED", res.error, true);
+}
+function dropOp(op){
+  const i = outbox.indexOf(op);
+  if(i>=0){ outbox.splice(i,1); saveOutbox(); }
+}
+
+function flushOutbox(){
+  if(flushPromise) return flushPromise;
+  flushPromise = (async ()=>{
+    clearTimeout(flushTimer); flushTimer = null;
+    if(pulling || !user || !sb) return;
+    let sent = 0;
+    while(true){
+      const op = outbox.find(o=>o.uid===user.id);
+      if(!op) break;
+      const rev = op.rev;
+      let res;
+      try{ res = await sendOp(op); }catch(e){ res = { status:0, error:e }; }
+      if(!res.error){
+        if(op.rev===rev) dropOp(op);   // edited while in flight? send again with the latest values
+        else { delete op.fails; delete op.firstFail; saveOutbox(); }
+        sent++; online = true; netFails = 0;
+        continue;
+      }
+      const kind = classify(res);
+      if(kind==="reject"){ park(op, res); continue; }
+      if(kind==="server"){
+        online = true; netFails = 0;
+        op.fails = (op.fails||0) + 1;
+        if(!op.firstFail) op.firstFail = Date.now();
+        saveOutbox();
+        if(op.fails >= PARK_AFTER_FAILS && Date.now() - op.firstFail >= PARK_MIN_SPAN){ park(op, res); continue; }
+        if(op.fails===1) captureError("SYNC_SERVER", res.error);
+        scheduleFlush(backoff(SERVER_RETRY, op.fails));
+        break;
+      }
+      if(online) captureError("SYNC", res.error);
+      online = false; netFails++;
+      scheduleFlush(backoff(NET_RETRY, netFails));
+      break;
+    }
+    if(sent){ historyCache = null; flashSaved("Saved ✓"); }
+  })().finally(()=>{ flushPromise = null; updateSyncBadge(); });
+  return flushPromise;
+}
+
+// lay pending (unsent) outbox entries over state so a cloud reload never hides them
+function applyOutbox(){
+  myOutbox().forEach(op=>{
+    if(op.t==="del"){ delete state[op.date]; return; }
+    if(!state[op.date]) state[op.date]={};
+    const s = state[op.date];
+    if(op.t==="status"){ s._done = op.f.completed; return; }
+    if("reps" in op.f){
+      if(!s[op.ex]) s[op.ex]=[0,0,0];
+      s[op.ex][op.set] = op.f.reps;
+    }
+    if("assist" in op.f) s[op.ex+"_assist"] = op.f.assist;
+    if("weight_kg" in op.f){ if(op.f.weight_kg==null) delete s[op.ex+"_weight"]; else s[op.ex+"_weight"] = op.f.weight_kg; }
+    if("negatives" in op.f){ if(op.f.negatives==null) delete s[op.ex+"_neg"]; else s[op.ex+"_neg"] = op.f.negatives; }
+  });
+}
+
+// ---- cloud writes (all go through the outbox) ----
+function pushSet(dateISO, day, exid, setIdx, reps){
+  enqueue({ t:"log", date:dateISO, day, ex:exid, set:setIdx, f:{ reps } });
+}
+// assistance, weight and negatives live on the set_index 0 row for this exercise/date
+function pushAssist(dateISO, day, exid, assist){
+  enqueue({ t:"log", date:dateISO, day, ex:exid, set:0, f:{ assist } });
+}
+function pushWeight(dateISO, day, exid, weight){
+  enqueue({ t:"log", date:dateISO, day, ex:exid, set:0, f:{ weight_kg: weight===""?null:(+weight) } });
+}
+function pushNegatives(dateISO, day, exid, reps){
+  enqueue({ t:"log", date:dateISO, day, ex:exid, set:0, f:{ negatives: reps===""?null:(+reps) } });
+}
+function pushStatus(dateISO, day, done){
+  enqueue({ t:"status", date:dateISO, day, f:{ completed:done } });
+}
+function deleteDay(dateISO){
+  enqueue({ t:"del", date:dateISO });
+}
+
+window.addEventListener("online", ()=>flushOutbox());
+document.addEventListener("visibilitychange", ()=>{
+  if(document.visibilityState==="visible") flushOutbox();
+});
+
+// ---- device storage: ask the browser not to clear the app's data under storage pressure ----
+async function checkStoragePersistence(){
+  if(!(navigator.storage && navigator.storage.persisted && navigator.storage.persist)){ storagePersisted = null; return; }
   try{
-    await sb.from("workout_log").delete().eq("user_id",user.id).eq("log_date",dateISO);
-    await sb.from("day_status").delete().eq("user_id",user.id).eq("log_date",dateISO);
-  }catch(e){ online=false; updateSyncBadge(); }
+    storagePersisted = (await navigator.storage.persisted()) || (await navigator.storage.persist());
+  }catch(e){ storagePersisted = false; }
+  updateSyncBadge();
+}
+function renderStorageWarning(){
+  const el = document.getElementById("storageWarn");
+  if(!el) return;
+  const atRisk = myOutbox().length + myFailed().length > 0;
+  const dismissed = !!localStorage.getItem(STORAGE_WARN_KEY);
+  el.classList.toggle("show", !!user && storagePersisted===false && (atRisk || !dismissed));
+}
+function dismissStorageWarning(){
+  try{ localStorage.setItem(STORAGE_WARN_KEY, new Date().toISOString()); }catch(e){}
+  renderStorageWarning();
+}
+
+// ---- sync status panel (tap the badge) ----
+function describeOp(op){
+  const d = new Date(op.date+"T00:00:00").toLocaleDateString(undefined,{weekday:"short",day:"numeric",month:"short"});
+  if(op.t==="del") return d+" · Clear day";
+  if(op.t==="status") return d+" · "+(op.f.completed ? "Day marked complete" : "Day marked not complete");
+  const reg = EX_REGISTRY.find(e=>e.id===op.ex);
+  const parts = [];
+  if("reps" in op.f) parts.push("set "+(op.set+1)+": "+op.f.reps+" reps");
+  if("weight_kg" in op.f) parts.push("weight "+(op.f.weight_kg==null?"cleared":op.f.weight_kg+" kg"));
+  if("negatives" in op.f) parts.push("negatives "+(op.f.negatives==null?"cleared":op.f.negatives));
+  if("assist" in op.f) parts.push("assistance "+(op.f.assist||"cleared"));
+  return d+" · "+(reg?reg.name:op.ex)+" · "+parts.join(", ");
+}
+function escapeHTML(s){
+  return String(s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+function openSyncPanel(){
+  renderSyncPanel();
+  document.getElementById("syncModal").classList.add("show");
+}
+function closeSyncPanel(){ document.getElementById("syncModal").classList.remove("show"); }
+function renderSyncPanel(){
+  const body = document.getElementById("syncBody");
+  if(!body || !user) return;
+  const pending = myOutbox(), bad = myFailed();
+  const head = pending[0];
+  let summary;
+  if(!pending.length) summary = bad.length ? "Everything else on this device is saved to your account." : "Everything on this device is saved to your account.";
+  else if(!online) summary = pending.length+" "+(pending.length===1?"entry is":"entries are")+" waiting for a connection. They upload automatically.";
+  else if(head && head.fails) summary = pending.length+" waiting — Supabase isn't responding properly, retrying automatically (attempt "+head.fails+" of "+PARK_AFTER_FAILS+").";
+  else summary = pending.length+" uploading now…";
+  const storage = storagePersisted===true ? "Protected — this browser keeps the app's data even when storage runs low."
+    : storagePersisted===false ? "Not protected — unsynced entries could be cleared if this device runs low on storage. Installing the app (Add to Home screen) usually fixes this."
+    : "Unknown — this browser doesn't report it.";
+  let html = `<p>${escapeHTML(summary)}</p>
+    <div class="syncrow"><b>Storage on this device</b><span>${escapeHTML(storage)}</span></div>`;
+  if(bad.length){
+    html += `<div class="syncfailhead">⚠ ${bad.length} ${bad.length===1?"entry":"entries"} the server refused</div>`;
+    failed.forEach((x,i)=>{
+      if(x.op.uid!==user.id) return;
+      const reason = x.message + (x.code ? " ["+x.code+"]" : "") + (x.status ? " (HTTP "+x.status+")" : "");
+      html += `<div class="syncfail">
+        <div class="what">${escapeHTML(describeOp(x.op))}</div>
+        <div class="why">${escapeHTML(reason)}</div>
+        <button onclick="discardFailed(${i})">Discard</button>
+      </div>`;
+    });
+  }
+  body.innerHTML = html;
+  document.getElementById("syncRetry").style.display = bad.length ? "" : "none";
+}
+function retryFailed(){
+  const mine = myFailed();
+  if(!mine.length) return;
+  failed = failed.filter(x=>x.op.uid!==user.id);
+  // these predate everything still queued, so they go back to the front
+  outbox = mine.map(x=>x.op).concat(outbox);
+  saveFailed(); saveOutbox();
+  renderSyncPanel(); updateSyncBadge();
+  flushOutbox().then(renderSyncPanel);
+}
+async function discardFailed(i){
+  const x = failed[i];
+  if(!x || !confirm("Discard this entry? It will not be saved:\n\n"+describeOp(x.op))) return;
+  failed.splice(i,1); saveFailed();
+  renderSyncPanel(); updateSyncBadge();
+  await pullWeek(); render();
 }
 
 // ---- cloud read: pull the current week into state ----
 async function pullWeek(){
   if(!user) return;
   const dates = DAYS.map((_,i)=>dateForTab(i));
+  await flushOutbox();
+  pulling = true;
   try{
     const { data:logs, error:e1 } = await sb.from("workout_log")
       .select("log_date,exercise_id,set_index,reps,assist,weight_kg,negatives").in("log_date", dates);
@@ -700,18 +964,27 @@ async function pullWeek(){
       if(!state[r.log_date]) state[r.log_date]={};
       state[r.log_date]._done = r.completed;
     });
+    applyOutbox();
     writeCache();
     online=true;
     const t=document.getElementById("userErr"); if(t) t.classList.remove("show");
   }catch(e){ captureError("PULL", e); online=false; }
+  finally{ pulling = false; }
+  if(myOutbox().length && !flushTimer) scheduleFlush(online ? 0 : NET_RETRY.base);
   updateSyncBadge();
 }
 
 function updateSyncBadge(){
+  renderStorageWarning();
+  if(document.getElementById("syncModal")?.classList.contains("show")) renderSyncPanel();
   const b=document.getElementById("syncBadge");
   if(!b) return;
-  b.className="syncbadge "+(online?"online":"offline");
-  b.textContent = online ? "Synced" : "Offline";
+  const pending = myOutbox(), bad = myFailed().length;
+  const stuck = !online || (pending[0] && pending[0].fails);
+  if(bad){ b.className="syncbadge failed"; b.textContent="⚠ "+bad+" failed"; return; }
+  b.className="syncbadge "+(online && !pending.length ? "online" : "offline");
+  b.textContent = !pending.length ? (online ? "Synced" : "Offline")
+                                  : (stuck ? pending.length+" unsynced" : "Syncing…");
 }
 
 function dayHasData(dateISO){
@@ -936,7 +1209,7 @@ function bind(dateISO, day){
     };
   });
   document.querySelectorAll('.assistinput').forEach(inp=>{
-    inp.onchange = ()=>{
+    inp.oninput = ()=>{
       const exid=inp.dataset.ex;
       if(!state[dateISO]) state[dateISO]={};
       state[dateISO][exid+"_assist"]=inp.value;
@@ -944,7 +1217,7 @@ function bind(dateISO, day){
     };
   });
   document.querySelectorAll('.weightinput').forEach(inp=>{
-    inp.onchange = ()=>{
+    inp.oninput = ()=>{
       const exid=inp.dataset.ex;
       if(!state[dateISO]) state[dateISO]={};
       state[dateISO][exid+"_weight"]=inp.value;
@@ -952,7 +1225,7 @@ function bind(dateISO, day){
     };
   });
   document.querySelectorAll('.neginput').forEach(inp=>{
-    inp.onchange = ()=>{
+    inp.oninput = ()=>{
       const exid=inp.dataset.ex;
       if(!state[dateISO]) state[dateISO]={};
       state[dateISO][exid+"_neg"]=inp.value;
@@ -988,7 +1261,7 @@ document.getElementById("reset").onclick=()=>{
   if(idx>=0) current=idx;
   document.getElementById("today").innerHTML =
     now.toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'}) +
-    ' <span id="syncBadge" class="syncbadge offline">Offline</span>';
+    ' <span id="syncBadge" class="syncbadge offline" role="button" onclick="openSyncPanel()">Offline</span>';
 })();
 
 // ================= AUTH FLOW (6-digit code) =================
@@ -1004,6 +1277,7 @@ function authMsg(text, cls){
 
 async function initAuth(){
   loadCache();
+  loadOutbox();
   sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY,
     { auth:{ persistSession:true, autoRefreshToken:true } });
 
@@ -1029,6 +1303,7 @@ async function afterLogin(){
     document.querySelector(".wrap").appendChild(b);
   }
   render();
+  checkStoragePersistence();
   await pullWeek();
   await fetchDeloadSettings();
   render();
