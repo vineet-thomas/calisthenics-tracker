@@ -1,0 +1,16 @@
+# macOS
+.DS_Store
+
+# local archive of old backups (git history is the backup)
+_archive/
+index-bkp*.html
+index copy.html
+
+# local working material that must never be published
+*.zip
+files (1)/
+files (2)/
+garminexport/
+launchd files/
+.env
+.env.*
