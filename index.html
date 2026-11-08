@@ -585,7 +585,7 @@ let online = true;
 const SUPABASE_URL = "https://aqbufgwvlrtegoflqrwl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_1vID-paB_RrmUk5XThwS-g_Qs05BLGH";
 const CACHE_KEY = "calisthenics-75hard-cache-v2";
-const APP_VERSION = "1.2.0";
+const APP_VERSION = "1.2.1";
 const DEBUG = new URLSearchParams(location.search).has("debug");
 let lastError = null;   // most recent captured error, for the feedback form
 
@@ -718,7 +718,7 @@ const NET_RETRY = { base:5000, cap:60000 };        // no connection / session re
 const SERVER_RETRY = { base:30000, cap:900000 };   // Supabase errors: 30s doubling, max 15 min
 const PARK_AFTER_FAILS = 8;                        // server errors are set aside after 8 failed attempts
 const PARK_MIN_SPAN = 30*60*1000;                  // ...and never sooner than 30 min after the first
-let outbox = [];          // [{ t:"log"|"status"|"del", uid, date, day, ex, set, f:{...}, ts, rev, fails, firstFail }]
+let outbox = [];          // [{ t:"log"|"status"|"del"|"setting", uid, date, day, ex, set, f:{...}, ts, rev, fails, firstFail }]
 let failed = [];          // entries the server refused: [{ op, status, code, message, at }]
 let flushPromise = null;
 let flushTimer = null;
@@ -796,6 +796,9 @@ async function sendOp(op){
       user_id:user.id, log_date:op.date, day:op.day, ...op.f, updated_at:op.ts
     }, { onConflict:"user_id,log_date" });
   }
+  if(op.t==="setting"){
+    return sb.from("settings").upsert({ user_id:user.id, ...op.f, updated_at:op.ts }, { onConflict:"user_id" });
+  }
   // "Clear this day" only removes rows that existed when it was pressed,
   // never rows written afterwards (e.g. from another device)
   const older = `updated_at.is.null,updated_at.lte."${op.ts}"`;
@@ -870,6 +873,7 @@ function flushOutbox(){
 // lay pending (unsent) outbox entries over state so a cloud reload never hides them
 function applyOutbox(){
   myOutbox().forEach(op=>{
+    if(op.t==="setting") return;   // settings are laid over in fetchDeloadSettings
     if(op.t==="del"){ delete state[op.date]; return; }
     if(!state[op.date]) state[op.date]={};
     const s = state[op.date];
@@ -932,6 +936,7 @@ function dismissStorageWarning(){
 
 // ---- sync status panel (tap the badge) ----
 function describeOp(op){
+  if(op.t==="setting") return "Deload week "+(op.f.deload_week ? "on (week of "+new Date(op.f.deload_week+"T00:00:00").toLocaleDateString(undefined,{day:"numeric",month:"short"})+")" : "off");
   const d = new Date(op.date+"T00:00:00").toLocaleDateString(undefined,{weekday:"short",day:"numeric",month:"short"});
   if(op.t==="del") return d+" · Clear day";
   if(op.t==="status") return d+" · "+(op.f.completed ? "Day marked complete" : "Day marked not complete");
@@ -1371,6 +1376,7 @@ async function afterLogin(){
     b.onclick=doSignOut;
     document.querySelector(".wrap").appendChild(b);
   }
+  loadDeloadLocal();
   render();
   checkStoragePersistence();
   await pullWeek();
@@ -1378,32 +1384,37 @@ async function afterLogin(){
   render();
 }
 
+// deload is kept on the device too, so the right state shows when the app opens offline
+const DELOAD_KEY = "calisthenics-deload-v1";
+function loadDeloadLocal(){
+  try{ const d = JSON.parse(localStorage.getItem(DELOAD_KEY)); if(d && user && d.uid===user.id) deloadWeekStart = d.week; }catch(e){}
+}
+function saveDeloadLocal(){
+  try{ if(user) localStorage.setItem(DELOAD_KEY, JSON.stringify({ uid:user.id, week:deloadWeekStart })); }catch(e){}
+}
 async function fetchDeloadSettings(){
   if(!user || !sb) return;
+  loadDeloadLocal();
   try{
     const { data, error } = await sb.from("settings").select("deload_week").eq("user_id", user.id).maybeSingle();
     if(error) throw error;
     deloadWeekStart = (data && data.deload_week) ? data.deload_week : null;
   }catch(e){ captureError("SETTINGS_FETCH", e); }
+  const pending = myOutbox().filter(o=>o.t==="setting").pop();   // a toggle not yet uploaded wins
+  if(pending) deloadWeekStart = pending.f.deload_week;
+  saveDeloadLocal();
 }
 
 function currentWeekMonday(){
   return dateForTab(0); // Monday of the week currently shown in the day tabs
 }
 
-async function toggleDeload(){
+function toggleDeload(){
   const monday = currentWeekMonday();
-  const turningOn = deloadWeekStart !== monday;
-  deloadWeekStart = turningOn ? monday : null;
+  deloadWeekStart = deloadWeekStart !== monday ? monday : null;
+  saveDeloadLocal();
   render(); // optimistic UI update
-  if(!user || !sb) return;
-  try{
-    const { error } = await sb.from("settings").upsert({
-      user_id:user.id, deload_week: deloadWeekStart, updated_at:new Date().toISOString()
-    }, { onConflict:"user_id" });
-    if(error) throw error;
-    flashSaved(turningOn ? "Deload week on ✓" : "Deload week off");
-  }catch(e){ captureError("SETTINGS_SAVE", e); flashSaved("Saved offline", true); }
+  enqueue({ t:"setting", f:{ deload_week: deloadWeekStart } });
 }
 
 async function doSignOut(){
