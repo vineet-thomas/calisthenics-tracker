@@ -527,7 +527,7 @@ let online = true;
 const SUPABASE_URL = "https://aqbufgwvlrtegoflqrwl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_1vID-paB_RrmUk5XThwS-g_Qs05BLGH";
 const CACHE_KEY = "calisthenics-75hard-cache-v2";
-const APP_VERSION = "1.1.0";
+const APP_VERSION = "1.1.1";
 const DEBUG = new URLSearchParams(location.search).has("debug");
 let lastError = null;   // most recent captured error, for the feedback form
 
@@ -598,6 +598,10 @@ function showDevBar(context, code, message){
 function showUserError(){
   const t=document.getElementById("userErr");
   if(t) t.classList.add("show");
+}
+function hideUserError(){
+  const t=document.getElementById("userErr");
+  if(t) t.classList.remove("show");
 }
 
 // ---- feedback / report a problem ----
@@ -800,7 +804,7 @@ function flushOutbox(){
       scheduleFlush(backoff(NET_RETRY, netFails));
       break;
     }
-    if(sent){ historyCache = null; flashSaved("Saved ✓"); }
+    if(sent){ historyCache = null; flashSaved("Saved ✓"); if(!myOutbox().length) hideUserError(); }
   })().finally(()=>{ flushPromise = null; updateSyncBadge(); });
   return flushPromise;
 }
@@ -967,7 +971,7 @@ async function pullWeek(){
     applyOutbox();
     writeCache();
     online=true;
-    const t=document.getElementById("userErr"); if(t) t.classList.remove("show");
+    hideUserError();
   }catch(e){ captureError("PULL", e); online=false; }
   finally{ pulling = false; }
   if(myOutbox().length && !flushTimer) scheduleFlush(online ? 0 : NET_RETRY.base);
