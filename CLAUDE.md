@@ -47,6 +47,9 @@ their schema, and never write to them from here.
    only gate before production.
 6. **Schema changes:** add them as idempotent SQL (`if not exists`, RLS included) AND tell the
    owner the exact SQL to run in Supabase before merging. Never drop or rename columns.
+   **Any SQL that touches the live database ships with its reverse:** `sql/NNN-<name>.sql`
+   plus `sql/NNN-<name>-rollback.sql` in the same PR. Both must be idempotent, and both must be
+   tested (apply, roll back, re-apply) before the PR is opened.
 7. **No backup files** (`index-bkp*.html`, `index copy.html`). Git history is the backup.
 8. **Day objects must keep their shape.** Every entry in `DAYS` points at a data object with
    either a `work` + `stretch` pair (training days) or a `circuit` + `stretch` pair (run and
