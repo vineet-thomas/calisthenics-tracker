@@ -290,7 +290,7 @@
     <div class="sub" id="today"></div>
   </header>
   <div id="storageWarn">
-    <span>⚠ This browser hasn't agreed to keep the app's data permanently, so entries not yet synced could be cleared if your phone runs low on storage. Installing the app (Add to Home screen) usually fixes this.</span>
+    <span>⚠ This browser hasn't agreed to keep the app's data permanently, so entries not yet synced could be cleared if this device runs low on storage. Installing the app (Add to Home screen) usually fixes this.</span>
     <button onclick="dismissStorageWarning()">OK</button>
   </div>
 
@@ -900,7 +900,7 @@ function renderSyncPanel(){
   else if(head && head.fails) summary = pending.length+" waiting — Supabase isn't responding properly, retrying automatically (attempt "+head.fails+" of "+PARK_AFTER_FAILS+").";
   else summary = pending.length+" uploading now…";
   const storage = storagePersisted===true ? "Protected — this browser keeps the app's data even when storage runs low."
-    : storagePersisted===false ? "Not protected — unsynced entries could be cleared if the phone runs low on storage. Installing the app (Add to Home screen) usually fixes this."
+    : storagePersisted===false ? "Not protected — unsynced entries could be cleared if this device runs low on storage. Installing the app (Add to Home screen) usually fixes this."
     : "Unknown — this browser doesn't report it.";
   let html = `<p>${escapeHTML(summary)}</p>
     <div class="syncrow"><b>Storage on this device</b><span>${escapeHTML(storage)}</span></div>`;
