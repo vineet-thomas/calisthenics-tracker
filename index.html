@@ -12,7 +12,6 @@
 <meta name="apple-mobile-web-app-title" content="Calisthenics">
 <title>Calisthenics · 75 Hard</title>
 <script src="vendor/supabase-js-2.119.0/supabase.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js" integrity="sha384-GJqSu7vueQ9qN0E9yLPb3Wtpd7OrgK8KmYzC8T1IysG1bcvxvIO4qtYR/D3A991F" crossorigin="anonymous"></script>
 <style>
   :root{
     --bg:#0f131b; --panel:#161b26; --panel2:#1d2432; --line:#2a3242;
@@ -189,7 +188,7 @@
   .ocrstatus{text-align:center;font-size:.76rem;margin-top:6px;min-height:16px;}
   .ocrstatus.ok{color:var(--done);} .ocrstatus.err{color:#e8944a;}
 
-
+  #saved{position:fixed;left:50%;transform:translateX(-50%) translateY(20px);
     bottom:calc(env(safe-area-inset-bottom) + 18px);
     background:var(--done);color:#0f131b;font-weight:800;font-size:.8rem;
     padding:9px 18px;border-radius:22px;box-shadow:0 4px 16px rgba(0,0,0,.4);
@@ -239,6 +238,7 @@
   #authScreen button:disabled{opacity:.5;}
   #authMsg{margin-top:16px;font-size:.84rem;min-height:20px;}
   #authMsg.ok{color:var(--done);} #authMsg.err{color:#e8944a;}
+  .appver{text-align:center;font-size:.66rem;color:var(--faint);margin:18px 0 0;letter-spacing:.04em;}
   .signout{display:block;margin:20px auto 0;background:none;border:1px solid var(--line);
     color:var(--faint);font-size:.72rem;padding:7px 16px;border-radius:20px;cursor:pointer;}
   .syncbadge{display:inline-block;font-size:.64rem;font-weight:800;letter-spacing:.06em;
@@ -327,6 +327,7 @@
   <div id="measureView" style="display:none"></div>
   <div id="sleepView" style="display:none"></div>
   <div id="activityView" style="display:none"></div>
+  <div class="appver" id="appVer"></div>
 </div>
 <div id="saved">Saved ✓</div>
 <div id="userErr">
@@ -585,8 +586,22 @@ let online = true;
 const SUPABASE_URL = "https://aqbufgwvlrtegoflqrwl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_1vID-paB_RrmUk5XThwS-g_Qs05BLGH";
 const CACHE_KEY = "calisthenics-75hard-cache-v2";
-const APP_VERSION = "1.2.2";
+const APP_VERSION = "1.2.3";
 const DEBUG = new URLSearchParams(location.search).has("debug");
+document.getElementById("appVer").textContent = "v" + APP_VERSION;
+
+// last time this device confirmed its data with the server (an upload or a fresh download)
+const LAST_SYNC_KEY = "calisthenics-last-sync";
+function markSynced(){ try{ localStorage.setItem(LAST_SYNC_KEY, new Date().toISOString()); }catch(e){} }
+function lastSyncText(){
+  let v = null; try{ v = localStorage.getItem(LAST_SYNC_KEY); }catch(e){}
+  if(!v) return "not yet on this device";
+  const d = new Date(v), now = new Date(), yest = new Date(now); yest.setDate(now.getDate()-1);
+  const time = d.toLocaleTimeString(undefined, { hour:"2-digit", minute:"2-digit" });
+  if(d.toDateString()===now.toDateString()) return "today " + time;
+  if(d.toDateString()===yest.toDateString()) return "yesterday " + time;
+  return d.toLocaleDateString(undefined, { day:"numeric", month:"short" }) + " " + time;
+}
 let lastError = null;   // most recent captured error, for the feedback form
 
 // ---- date helpers ----
@@ -845,7 +860,7 @@ function flushOutbox(){
       if(!res.error){
         if(op.rev===rev) dropOp(op);   // edited while in flight? send again with the latest values
         else { delete op.fails; delete op.firstFail; saveOutbox(); }
-        sent++; online = true; netFails = 0;
+        sent++; online = true; netFails = 0; markSynced();
         continue;
       }
       const kind = classify(res);
@@ -970,7 +985,8 @@ function renderSyncPanel(){
     : storagePersisted===false ? "Not protected — unsynced entries could be cleared if this device runs low on storage. Installing the app (Add to Home screen) usually fixes this."
     : "Unknown — this browser doesn't report it.";
   let html = `<p>${escapeHTML(summary)}</p>
-    <div class="syncrow"><b>Storage on this device</b><span>${escapeHTML(storage)}</span></div>`;
+    <div class="syncrow"><b>App version · last synced</b><span>v${APP_VERSION} · ${escapeHTML(lastSyncText())}</span></div>
+    <div class="syncrow" style="margin-top:8px"><b>Storage on this device</b><span>${escapeHTML(storage)}</span></div>`;
   if(bad.length){
     html += `<div class="syncfailhead">⚠ ${bad.length} ${bad.length===1?"entry":"entries"} the server refused</div>`;
     failed.forEach((x,i)=>{
@@ -1035,6 +1051,7 @@ async function pullWeek(){
     writeCache();
     online=true;
     hideUserError();
+    markSynced();
   }catch(e){ captureError("PULL", e); online=false; }
   finally{ pulling = false; }
   if(myOutbox().length && !flushTimer) scheduleFlush(online ? 0 : NET_RETRY.base);
@@ -1374,7 +1391,7 @@ async function afterLogin(){
     const b=document.createElement("button");
     b.id="signOut"; b.className="signout"; b.textContent="Sign out";
     b.onclick=doSignOut;
-    document.querySelector(".wrap").appendChild(b);
+    document.querySelector(".wrap").insertBefore(b, document.getElementById("appVer"));
   }
   loadDeloadLocal();
   render();
@@ -1805,11 +1822,41 @@ async function fetchNutrition(force){
 }
 
 // OCR: read a HealthifyMe screenshot and try to pull macro numbers
+// OCR library: fetched only when a screenshot is read, so a slow or failing CDN can never stop the
+// app from opening. Pinned version + Subresource Integrity: a changed file is refused by the browser.
+const TESSERACT_SRC = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
+const TESSERACT_SRI = "sha384-GJqSu7vueQ9qN0E9yLPb3Wtpd7OrgK8KmYzC8T1IysG1bcvxvIO4qtYR/D3A991F";
+const OCR_LOAD_TIMEOUT_MS = 20000, OCR_READ_TIMEOUT_MS = 90000;
+let tesseractLoading = null;
+function withTimeout(promise, ms, message){
+  let t; return Promise.race([promise, new Promise((_, reject)=>{ t = setTimeout(()=>reject(new Error(message)), ms); })]).finally(()=>clearTimeout(t));
+}
+function loadTesseract(){
+  if(window.Tesseract) return Promise.resolve(window.Tesseract);
+  if(!tesseractLoading){
+    tesseractLoading = withTimeout(new Promise((resolve, reject)=>{
+      const el = document.createElement("script");
+      el.src = TESSERACT_SRC; el.integrity = TESSERACT_SRI; el.crossOrigin = "anonymous"; el.async = true;
+      el.onload = ()=>window.Tesseract ? resolve(window.Tesseract) : reject(new Error("OCR library loaded but not available"));
+      el.onerror = ()=>reject(new Error("OCR library could not be downloaded"));
+      document.head.appendChild(el);
+    }), OCR_LOAD_TIMEOUT_MS, "OCR library took too long to download").catch(e=>{ tesseractLoading = null; throw e; });  // next pick retries
+  }
+  return tesseractLoading;
+}
+
 async function runOCR(file){
   const status=document.getElementById("ocrStatus");
   status.textContent="Reading screenshot… (first run downloads OCR, ~10s)"; status.className="";
+  let Tess;
+  try{ Tess = await loadTesseract(); }
+  catch(e){
+    captureError("OCR_LOAD", e, true);   // logged, but not shown as a sync problem
+    status.textContent="Couldn't load the screenshot reader (check your connection) — enter the numbers below. The screenshot is still attached."; status.className="err";
+    return;
+  }
   try{
-    const { data } = await Tesseract.recognize(file, "eng");
+    const { data } = await withTimeout(Tess.recognize(file, "eng"), OCR_READ_TIMEOUT_MS, "OCR took too long");
     const text = data.text || "";
     // heuristics: find numbers near keywords
     const grab = (labels)=>{
@@ -1838,7 +1885,7 @@ async function runOCR(file){
       : "Couldn't read numbers automatically — enter them below. Screenshot is still saved.";
     status.className = found>0?"ok":"err";
   }catch(e){
-    captureError("OCR", e);
+    captureError("OCR", e, true);        // logged, but not shown as a sync problem
     status.textContent="OCR failed — enter numbers manually below."; status.className="err";
   }
 }

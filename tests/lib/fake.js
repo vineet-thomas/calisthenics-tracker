@@ -104,6 +104,7 @@ async function newPage(browser, base, S, opts={}){
     const res = S.handle(st);                       // applied server-side even if the page has gone
     try{ await r.fulfill({ contentType:"application/json", body:JSON.stringify(res) }); }catch(_){}
   });
+  if(opts.before) await opts.before(page);          // extra routes / init scripts, registered before the first load
   page.ctx = ctx;
   page.go = async()=>{ await page.goto(base); await settle(page, opts.clock); await page.tab(0); };
   page.reload2 = async(ms)=>{ await page.reload(); await settle(page, opts.clock, ms); await page.tab(0); };

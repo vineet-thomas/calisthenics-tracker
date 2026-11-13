@@ -41,6 +41,7 @@ const step = (title, cmd, args, env={})=>new Promise(resolve=>{
   const env = { BASE:`http://localhost:${APP_PORT}/`, BASELINE:`http://localhost:${BASELINE_PORT}/` };
   results.push(["sync", await step("sync", process.execPath, ["sync.test.js"], env)]);
   results.push(["programme + regression", await step("programme + regression", process.execPath, ["programme.test.js"], env)]);
+  results.push(["ocr + version", await step("ocr + version", process.execPath, ["ocr-version.test.js"], env)]);
   if(REALSTACK){
     const up = await step("realstack: start", "bash", ["realstack/setup.sh", "start"]);
     if(up){

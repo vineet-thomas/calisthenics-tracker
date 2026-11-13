@@ -72,11 +72,11 @@ const info = page=>page.evaluate(()=>{
       check(`${label}: no horizontal overflow at 390 px`, d.overflow<=390, `scrollWidth=${d.overflow}`);
     }
 
-    const scripts = await page.evaluate(()=>[...document.querySelectorAll("script[src]")].map(e=>({ src:e.getAttribute("src"), integrity:e.integrity, cors:e.crossOrigin })));
-    const cdn = scripts.filter(x=>/^https?:/.test(x.src));
-    check("Supabase client is served from the repo, not a CDN", scripts.some(x=>/^vendor\/supabase-js-[\d.]+\/supabase\.js$/.test(x.src)) && !cdn.some(x=>/supabase/.test(x.src)), scripts.map(x=>x.src).join(", "));
-    check("every CDN script is pinned to an exact version with integrity + crossorigin", cdn.every(x=>/@\d+\.\d+\.\d+\//.test(x.src) && /^sha(256|384|512)-/.test(x.integrity) && x.cors==="anonymous"), cdn.map(x=>`${x.src} ${x.integrity?"SRI":"no SRI"} ${x.cors||"no crossorigin"}`).join("; "));
-    check("Tesseract loads with its integrity hash accepted", await page.evaluate(()=>typeof Tesseract!=="undefined" && typeof Tesseract.recognize==="function"));
+    const scripts = await page.evaluate(()=>[...document.querySelectorAll("script[src]")].map(e=>e.getAttribute("src")));
+    check("nothing third-party loads at startup (a slow CDN can't stop the app opening)", scripts.length>0 && scripts.every(src=>!/^https?:/.test(src)), scripts.join(", "));
+    check("Supabase client is served from the repo", scripts.some(src=>/^vendor\/supabase-js-[\d.]+\/supabase\.js$/.test(src)), scripts.join(", "));
+    const ocr = await page.evaluate(()=>({ src:TESSERACT_SRC, sri:TESSERACT_SRI }));
+    check("OCR library is pinned to an exact version with an integrity hash", /@\d+\.\d+\.\d+\//.test(ocr.src) && /^sha(256|384|512)-/.test(ocr.sri), `${ocr.src} ${ocr.sri.slice(0,16)}…`);
 
     await page.click("#tabProgress"); await sleep(800);
     const prog = await page.evaluate(()=>[...document.querySelectorAll("#progressView .chartcard")].map(c=>({
