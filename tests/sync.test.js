@@ -152,6 +152,30 @@ const badge = p=>p.locator("#syncBadge").textContent();
     check("9c back online without reload: Synced and message gone", (await badge(page))==="Synced" && !(await page.locator("#userErr.show").count()), await badge(page));
     await done(page); }
 
+  // 10. deload toggle goes through the queue (1.2.1)
+  { const S = makeServer(); const page = await newPage(browser, BASE, S);
+    const deloadOn = async()=>/Deload week/.test(await page.locator("#deloadBar").innerText());
+    const db = ()=>{ const r=(S.db.settings||[])[0]; return r ? String(r.deload_week) : "no row"; };
+    await page.click("#deloadBar button"); await sleep(1200);
+    const monday = await page.evaluate(()=>currentWeekMonday());
+    check("10a online toggle saves, Synced", db()===monday && (await badge(page))==="Synced" && await deloadOn(), `db=${db()}`);
+    S.offline = true; await page.click("#deloadBar button"); await sleep(800);
+    check("10b offline toggle is queued, not falsely 'saved'", (await badge(page))==="1 unsynced" && !(await deloadOn()) && db()===monday, `${await badge(page)} db=${db()}`);
+    await page.click("#syncBadge"); await sleep(200);
+    check("10c sync panel names the waiting toggle", /waiting for a connection/.test(await page.locator("#syncBody").innerText()));
+    await page.click("#syncClose");
+    S.offline = false; await page.evaluate(()=>window.dispatchEvent(new Event("online"))); await sleep(1500);
+    check("10d back online without reload: uploads, Synced", db()==="null" && (await badge(page))==="Synced", `${await badge(page)} db=${db()}`);
+    S.offline = true; await page.click("#deloadBar button"); await sleep(600);
+    S.offline = false; await page.reload2(1500);
+    check("10e a toggle made offline survives a refresh and syncs", db()===monday && await deloadOn() && (await badge(page))==="Synced", `db=${db()}`);
+    S.offline = true; await page.click("#deloadBar button"); await sleep(600);           // OFF at T (offline)
+    S.db.settings[0].deload_week = monday; S.db.settings[0].updated_at = new Date(Date.now()+1000).toISOString();  // other device: ON, newer
+    S.offline = false; await page.reload2(1500);
+    const st = await page.evaluate(()=>({ pending:myOutbox().length, failed:myFailed().length }));
+    check("10f an older toggle loses to a newer one: Synced, not failed", db()===monday && await deloadOn() && (await badge(page))==="Synced" && st.pending===0 && st.failed===0, `db=${db()} ${JSON.stringify(st)}`);
+    await done(page); }
+
   await browser.close();
   finish("sync", errors);
 })();
