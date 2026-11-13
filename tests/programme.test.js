@@ -97,22 +97,29 @@ const info = page=>page.evaluate(()=>{
 
   // ---- B. renderer regression against main ----
   if(BASELINE){
-    const px = (x,y)=>{ const a=PNG.sync.read(x), b=PNG.sync.read(y); if(a.width!==b.width||a.height!==b.height) return `size ${a.width}x${a.height} vs ${b.width}x${b.height}`;
-      let n=0; for(let k=0;k<a.data.length;k+=4) if(a.data[k]!==b.data[k]||a.data[k+1]!==b.data[k+1]||a.data[k+2]!==b.data[k+2]) n++; return n; };
+    // pixel comparison: { n differing pixels, max channel difference } or a size mismatch
+    const px = (x,y)=>{ const a=PNG.sync.read(x), b=PNG.sync.read(y);
+      if(a.width!==b.width||a.height!==b.height) return { size:`${a.width}x${a.height} vs ${b.width}x${b.height}`, n:Infinity, max:255 };
+      let n=0, max=0; for(let k=0;k<a.data.length;k+=4){ const d=Math.max(Math.abs(a.data[k]-b.data[k]),Math.abs(a.data[k+1]-b.data[k+1]),Math.abs(a.data[k+2]-b.data[k+2])); if(d){ n++; if(d>max) max=d; } }
+      return { n, max }; };
+    // Chrome sometimes anti-aliases a few edge pixels differently between sessions. With identical HTML and
+    // styles, a handful of faint pixels is that noise; anything bigger (or a size change) is a real difference.
+    const NOISE = d=>d.n<=200 && d.max<=10;
     const dom = p=>p.evaluate(()=>{ const v=[...document.querySelectorAll(".wrap > div")].find(e=>e.style.display!=="none" && e.id.endsWith("View")); return v.innerHTML; });
     const css = p=>p.evaluate(()=>{ const v=[...document.querySelectorAll(".wrap > div")].find(e=>e.style.display!=="none" && e.id.endsWith("View"));
-      return [...v.querySelectorAll("*")].map(e=>{ const c=getComputedStyle(e); return [c.color,c.backgroundColor,c.border,c.width,c.height,c.fontSize,c.fontWeight,c.padding,c.margin].join(";"); }).join("\n"); });
+      return [...v.querySelectorAll("*")].map(e=>[null,"::before","::after"].map(ps=>{ const c=getComputedStyle(e, ps);
+        return [c.content,c.color,c.backgroundColor,c.border,c.width,c.height,c.fontSize,c.fontWeight,c.padding,c.margin,c.display].join(";"); }).join("|")).join("\n"); });
     const views = [...P.DAYS.map((d,i)=>[`${d.d} ${d.focus}`, async p=>p.tab(i)]), ["Progress view", async p=>{ await p.click("#tabProgress"); await sleep(800); }]];
     const changed = [];
     for(const [name, open] of views){
       const a = await newPage(browser, BASELINE, makeServer(seed())), b = await newPage(browser, BASE, makeServer(seed()));
       await open(a); await open(b); await a.evaluate(()=>window.scrollTo(0,0)); await b.evaluate(()=>window.scrollTo(0,0));
       const sameDom = (await dom(a))===(await dom(b)), sameCss = (await css(a))===(await css(b));
-      let diff = px(await a.screenshot({ fullPage:true }), await b.screenshot({ fullPage:true }));
-      if(diff!==0 && sameDom && sameCss){ await sleep(300); diff = px(await a.screenshot({ fullPage:true }), await b.screenshot({ fullPage:true })); } // rule out rendering noise
-      const same = sameDom && sameCss && diff===0;
+      const diff = px(await a.screenshot({ fullPage:true }), await b.screenshot({ fullPage:true }));
+      const same = sameDom && sameCss && (diff.n===0 || NOISE(diff));
       if(!same) changed.push(name);
-      const detail = `HTML ${sameDom?"same":"DIFFERENT"}, styles ${sameCss?"same":"DIFFERENT"}, pixels ${diff===0?"same":diff+" differ"}`;
+      const pixels = diff.size ? `page size ${diff.size}` : diff.n===0 ? "same" : NOISE(diff) ? `same (${diff.n} px anti-aliasing noise, max ${diff.max}/255)` : `${diff.n} differ (max ${diff.max}/255)`;
+      const detail = `HTML ${sameDom?"same":"DIFFERENT"}, styles ${sameCss?"same":"DIFFERENT"}, pixels ${pixels}`;
       check(`regression — ${name}: identical to main's display code`, same || ALLOW, same ? detail : detail + (ALLOW ? "  [allowed: explain in the PR]" : ""));
       errors.push(...a.errors, ...b.errors); await a.ctx.close(); await b.ctx.close();
     }

@@ -81,6 +81,22 @@ function token(){   // a local JWT for the test user, signed with the local test
   await page.click("#deloadBar button"); await sleep(1500);
   check("R5 deload toggle saves to settings", sql("select count(*) from settings where deload_week is not null")==="1");
 
+  // deload toggle through the queue (1.2.1); settings has the newest-edit-wins trigger
+  const db = ()=>sql("select coalesce(deload_week::text,'null') from settings") || "no row";
+  const deloadOn = async()=>/Deload week/.test(await page.locator("#deloadBar").innerText());
+  const monday = await page.evaluate(()=>currentWeekMonday());
+  offline = true; await page.click("#deloadBar button"); await sleep(800);
+  check("R6 offline deload toggle is queued", (await badge())==="1 unsynced" && db()===monday && !(await deloadOn()), `${await badge()} db=${db()}`);
+  offline = false; await page.evaluate(()=>window.dispatchEvent(new Event("online"))); await sleep(1500);
+  check("R6 …and uploads when back online", db()==="null" && (await badge())==="Synced", `${await badge()} db=${db()}`);
+  offline = true; await page.click("#deloadBar button"); await sleep(600); await sleep(100);   // ON at T (offline)
+  sql("update settings set deload_week=null, updated_at=now()");                               // other device: OFF, newer
+  offline = false; log.length = 0; await reload(3000);
+  const w7 = log.filter(l=>l.method==="POST" && l.path.startsWith("settings"));
+  const st7 = await page.evaluate(()=>({ pending:myOutbox().length, failed:myFailed().length }));
+  check("R7 an older offline toggle loses to a newer one (HTTP 200) and ends Synced", db()==="null" && !(await deloadOn()) && (await badge())==="Synced" && st7.pending===0 && st7.failed===0 && w7.length===1 && w7[0].status===200,
+    `db=${db()} ${JSON.stringify(st7)} ${w7.map(x=>"HTTP "+x.status).join(",")}`);
+
   await browser.close();
   finish("realstack app", errors);
 })();
