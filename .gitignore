@@ -14,3 +14,7 @@ garminexport/
 launchd files/
 .env
 .env.*
+
+# test tooling (local only)
+tests/node_modules/
+tests/.tmp/
