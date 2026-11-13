@@ -2,7 +2,17 @@
 // The page loads a stand-in supabase-js whose queries POST to /fake-db; Playwright answers those
 // from an in-memory "server" that can go offline, return 5xx, refuse rows or be slow, and that
 // applies the same newest-edit-wins + future-clock clamp as sql/001-newest-edit-wins.sql.
+const fs = require("fs"), path = require("path");
 const sleep = ms=>new Promise(r=>setTimeout(r, ms));
+
+// Genuine CDN files (e.g. Tesseract), downloaded once into tests/.tmp/cdn and served from there, so
+// Subresource Integrity is checked against the real bytes without needing the network every run.
+async function cdnFile(url){
+  const dir = path.join(__dirname, "..", ".tmp", "cdn"); fs.mkdirSync(dir, { recursive:true });
+  const file = path.join(dir, url.replace(/[^a-z0-9.@-]+/gi, "_"));
+  if(!fs.existsSync(file)){ const r = await fetch(url); if(!r.ok) throw new Error(`download failed ${r.status} ${url}`); fs.writeFileSync(file, Buffer.from(await r.arrayBuffer())); }
+  return fs.readFileSync(file);
+}
 
 const FAKE_SUPABASE = `
 window.supabase = { createClient(){
@@ -82,8 +92,11 @@ async function newPage(browser, base, S, opts={}){
     navigator.storage.persist = async()=>p==="granted";
   }, opts.persist || "granted");
   if(opts.clock) await page.clock.install();
-  await page.route("**/@supabase/supabase-js@2", r=>r.fulfill({ contentType:"application/javascript", body:FAKE_SUPABASE }));
-  await page.route("**/tesseract.min.js", r=>r.fulfill({ contentType:"application/javascript", body:"" }));
+  // stand-in Supabase client, whether the page loads the vendored copy or (main's baseline) the CDN tag
+  for(const pat of ["**/vendor/supabase-js-*/supabase.js", "**/@supabase/supabase-js@2"])
+    await page.route(pat, r=>r.fulfill({ contentType:"application/javascript", body:FAKE_SUPABASE }));
+  await page.route("**/tesseract.min.js", async r=>r.fulfill({ contentType:"application/javascript",
+    headers:{ "access-control-allow-origin":"*" }, body:await cdnFile(r.request().url()) }));
   await page.route("**/fake-db", async r=>{
     if(S.offline) return r.abort("internetdisconnected");
     const st = JSON.parse(r.request().postData());
