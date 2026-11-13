@@ -35,21 +35,30 @@ their schema, and never write to them from here.
    delete an id.** Renaming one silently orphans years of chart history. Changing an exercise's
    display name, target or cue is fine — changing its id is not. Retiring a movement means
    removing it from the day's `work` array while leaving it in `EX_REGISTRY` so its history
-   still draws.
+   still draws. Every id is listed in `ids.lock.json`; the check (rule 4) fails if a locked id
+   disappears from `EX_REGISTRY`. A new id is added to the lock deliberately, in the same PR.
 2. **Branch, never commit to main.** Name branches `feature/<short-name>` or `fix/<short-name>`.
 3. **Every release bumps `APP_VERSION`** (semver) in index.html.
 4. **Run the check before committing:**
    ```bash
-   node -e "const fs=require('fs');const h=fs.readFileSync('index.html','utf8');[...h.matchAll(/<script>([\s\S]*?)<\/script>/g)].forEach(m=>new Function(m[1]));JSON.parse(fs.readFileSync('manifest.webmanifest','utf8'));console.log('OK')"
+   node tests/check.js     # script syntax, manifest, exercise-id lock (ids.lock.json)
    ```
-5. **Test locally** with `python3 -m http.server 8000`. Check the changed day at 390 px width
-   for overflow, and confirm the console is clean. Because there is no preview, this is the
-   only gate before production.
+5. **Run the tests before every PR** (`cd tests && npm install` once; see `tests/README.md`):
+   ```bash
+   node tests/run.js               # every PR
+   node tests/run.js --realstack   # also whenever sync code or anything in sql/ changes
+   ```
+   All suites must pass. The regression compares every day and the Progress view with `main`;
+   if a PR changes the display on purpose, run with `ALLOW_RENDER_CHANGE=1` and list the
+   differences in the PR. New behaviour gets a new test in the same PR. Paste the summary into
+   the PR. Then check the changed day by eye at 390 px (`python3 -m http.server 8000`) —
+   because there is no preview, this is the only gate before production.
 6. **Schema changes:** add them as idempotent SQL (`if not exists`, RLS included) AND tell the
    owner the exact SQL to run in Supabase before merging. Never drop or rename columns.
    **Any SQL that touches the live database ships with its reverse:** `sql/NNN-<name>.sql`
    plus `sql/NNN-<name>-rollback.sql` in the same PR. Both must be idempotent, and both must be
-   tested (apply, roll back, re-apply) before the PR is opened.
+   tested (apply, roll back, re-apply) before the PR is opened — `tests/realstack/sql.test.sh`
+   does this for every script in `sql/`; add behaviour checks for the new script there.
 7. **No backup files** (`index-bkp*.html`, `index copy.html`). Git history is the backup.
 8. **Day objects must keep their shape.** Every entry in `DAYS` points at a data object with
    either a `work` + `stretch` pair (training days) or a `circuit` + `stretch` pair (run and
@@ -67,15 +76,19 @@ their schema, and never write to them from here.
 ```bash
 git checkout main && git pull
 git checkout -b feature/<name>
-# make the change, bump APP_VERSION, run the check
-python3 -m http.server 8000          # verify at localhost, 390 px
-git add -A && git commit -m "<type>: <summary>"   # types: feat, fix, content, style, chore
+# make the change, bump APP_VERSION
+node tests/check.js && node tests/run.js           # add --realstack for sync or SQL changes
+python3 -m http.server 8000                        # verify at localhost, 390 px
+git add <the files you changed>                    # never `git add -A`: the folder holds the owner's working files
+git commit -m "<type>: <summary>"                  # types: feat, fix, content, style, chore
 git push -u origin feature/<name>
 gh pr create --fill
 ```
 
-Report back: the PR link, any SQL the owner must run, and confirmation that the app loaded
-clean at localhost. The owner merges, which publishes immediately.
+Report back: the PR link, the test summary, any SQL the owner must run, and confirmation that
+the app loaded clean at localhost. The owner merges, which publishes immediately. When PRs are
+stacked, don't delete a branch on merge while another open PR is based on it — GitHub closes
+that PR.
 
 ## Handoff from claude.ai chats
 

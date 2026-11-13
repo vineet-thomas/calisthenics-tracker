@@ -1,0 +1,14 @@
+{
+  "name": "calisthenics-tracker-tests",
+  "private": true,
+  "description": "Local test suites for calisthenics-tracker. See tests/README.md.",
+  "scripts": {
+    "check": "node check.js",
+    "test": "node run.js",
+    "test:all": "node run.js --realstack"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.56.0",
+    "pngjs": "^7.0.0"
+  }
+}

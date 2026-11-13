@@ -1,0 +1,22 @@
+{
+  "_comment": "Exercise ids are permanent: they key every workout_log row. Add new ids here deliberately; never rename or remove one (CLAUDE.md rule 1). Checked by tests/check.js.",
+  "ids": [
+    "pushups",
+    "dips",
+    "ohpress",
+    "floorpress",
+    "latraise",
+    "rows",
+    "scapulapull",
+    "dbrows",
+    "reardelt",
+    "curl",
+    "core",
+    "squats",
+    "splitsquat",
+    "rdl",
+    "hipthrust",
+    "calves",
+    "kbswings"
+  ]
+}
