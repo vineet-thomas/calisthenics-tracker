@@ -72,6 +72,12 @@ const info = page=>page.evaluate(()=>{
       check(`${label}: no horizontal overflow at 390 px`, d.overflow<=390, `scrollWidth=${d.overflow}`);
     }
 
+    const scripts = await page.evaluate(()=>[...document.querySelectorAll("script[src]")].map(e=>({ src:e.getAttribute("src"), integrity:e.integrity, cors:e.crossOrigin })));
+    const cdn = scripts.filter(x=>/^https?:/.test(x.src));
+    check("Supabase client is served from the repo, not a CDN", scripts.some(x=>/^vendor\/supabase-js-[\d.]+\/supabase\.js$/.test(x.src)) && !cdn.some(x=>/supabase/.test(x.src)), scripts.map(x=>x.src).join(", "));
+    check("every CDN script is pinned to an exact version with integrity + crossorigin", cdn.every(x=>/@\d+\.\d+\.\d+\//.test(x.src) && /^sha(256|384|512)-/.test(x.integrity) && x.cors==="anonymous"), cdn.map(x=>`${x.src} ${x.integrity?"SRI":"no SRI"} ${x.cors||"no crossorigin"}`).join("; "));
+    check("Tesseract loads with its integrity hash accepted", await page.evaluate(()=>typeof Tesseract!=="undefined" && typeof Tesseract.recognize==="function"));
+
     await page.click("#tabProgress"); await sleep(800);
     const prog = await page.evaluate(()=>[...document.querySelectorAll("#progressView .chartcard")].map(c=>({
       name:c.querySelector(".nm").childNodes[0].textContent, sub:(c.querySelector(".sub")||{}).textContent||"" })));
