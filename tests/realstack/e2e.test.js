@@ -107,9 +107,31 @@ function token(){   // a local JWT for the test user, signed with the local test
   await page.fill('.setweight[data-ex="ohpress"][data-set="0"]', "11.5"); await sleep(1500);
   check("P2 hand-edited set 3 keeps its weight when set 1 changes", rowsOf("ohpress")==="1:10@11.5 2:10@11.5 3:10@8", rowsOf("ohpress"));
   await page.fill(set("ohpress",2), ""); await sleep(1500);
-  check("P3 clearing a set stores no reps (never 0)", rowsOf("ohpress")==="1:10@11.5 2:10@11.5 3:-@8" && sql("select count(*) from workout_log where reps = 0")==="0", rowsOf("ohpress"));
+  check("P3 clearing a set stores reps = 0 (cleared) — accepted by the NOT NULL column, Synced", rowsOf("ohpress")==="1:10@11.5 2:10@11.5 3:0@8" && (await badge())==="Synced", `${rowsOf("ohpress")} ${await badge()}`);
   await reload(3000);
   check("P4 after a refresh the cleared set is empty and the weights are per set", await page.inputValue(set("ohpress",2))==="" && await page.inputValue('.setweight[data-ex="ohpress"][data-set="2"]')==="8");
+
+  // entries left in the queue by older versions, against reps integer NOT NULL
+  const stamp = ()=>new Date().toISOString();
+  await page.evaluate(([d, ts])=>{ outbox.push(
+      { t:"log", uid:user.id, date:d, day:"Mon", ex:"dips", set:0, f:{ reps:0 }, ts, rev:1 },         // pre-1.3.0 queued 0
+      { t:"log", uid:user.id, date:d, day:"Mon", ex:"dips", set:1, f:{ reps:null }, ts, rev:1 });     // 1.3.0 queued null
+    saveOutbox(); return flushOutbox(); }, [day, stamp()]);
+  await sleep(1500);
+  const q = await page.evaluate(()=>({ pending:myOutbox().length, failed:myFailed().length }));
+  check("Q1 an old queued reps = 0 goes through to the NOT NULL column", sql("select reps from workout_log where exercise_id='dips' and set_index=0")==="0");
+  check("Q2 a reps = null queued by 1.3.0 is sent as 0 and accepted", sql("select reps from workout_log where exercise_id='dips' and set_index=1")==="0" && q.pending===0 && q.failed===0 && (await badge())==="Synced", `${JSON.stringify(q)} ${await badge()}`);
+  await page.evaluate(([d, ts])=>{ failed.push({ op:{ t:"log", uid:user.id, date:d, day:"Mon", ex:"dips", set:2, f:{ reps:null }, ts, rev:1 },
+      status:400, code:"23502", message:"null value in column \"reps\" violates not-null constraint", at:ts }); saveFailed(); updateSyncBadge(); }, [day, stamp()]);
+  check("Q3 an entry 1.3.0 set aside shows as failed", (await badge())==="⚠ 1 failed", await badge());
+  await page.click("#syncBadge"); await sleep(200); await page.click("#syncRetry"); await sleep(1500); await page.click("#syncClose");
+  check("Q3 …and Retry now succeeds (sent as 0)", sql("select reps from workout_log where exercise_id='dips' and set_index=2")==="0" && (await badge())==="Synced", await badge());
+  // negatives typed before any reps: creates set 1's row without a reps value
+  await page.click('.day[data-i="4"]'); await sleep(300);
+  await page.fill('.neginput[data-ex="rows"]', "4"); await sleep(1500);
+  const negRow = sql("select coalesce(reps::text,'null')||'|'||coalesce(negatives::text,'null') from workout_log where exercise_id='rows' and set_index=0");
+  check("Q4 negatives entered before any reps save (set 1's row created without reps)", negRow.endsWith("|4") && (await badge())==="Synced", `row ${negRow || "none"}, ${await badge()}`);
+  await page.click('.day[data-i="0"]'); await sleep(200);
 
   await browser.close();
   finish("realstack app", errors);
