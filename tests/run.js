@@ -20,7 +20,9 @@ function buildBaseline(){
   const here = fs.readFileSync(path.join(ROOT, "index.html"), "utf8");
   const cut = s=>[s.indexOf("const WARMUP"), s.indexOf("const ADVANCE_TOTAL")];
   const [a1,a2] = cut(mainHtml), [b1,b2] = cut(here);
-  // the version number is release data too (it's shown in the footer), so the baseline carries this branch's
+  // the version number is release data too (it's shown in the footer), so the baseline carries this branch's.
+  // Consequence: the regression can't catch the footer itself breaking — ocr-version.test.js (6a/6b) checks
+  // the footer reads exactly "v" + APP_VERSION on every tab.
   const version = (here.match(/const APP_VERSION = "[^"]*";/) || [""])[0];
   const merged = mainHtml.slice(0,a1) + here.slice(b1,b2) + mainHtml.slice(a2);
   fs.writeFileSync(path.join(dir, "index.html"), version ? merged.replace(/const APP_VERSION = "[^"]*";/, version) : merged);
@@ -46,6 +48,7 @@ const step = (title, cmd, args, env={})=>new Promise(resolve=>{
   results.push(["programme + regression", await step("programme + regression", process.execPath, ["programme.test.js"], env)]);
   results.push(["ocr + version", await step("ocr + version", process.execPath, ["ocr-version.test.js"], env)]);
   results.push(["history paging", await step("history paging", process.execPath, ["history.test.js"], env)]);
+  results.push(["per-set weights", await step("per-set weights", process.execPath, ["sets.test.js"], env)]);
   if(REALSTACK){
     const up = await step("realstack: start", "bash", ["realstack/setup.sh", "start"]);
     if(up){

@@ -98,6 +98,11 @@
     text-align:center;font-size:1.1rem;font-weight:800;height:44px;
     -moz-appearance:textfield;min-width:0;}
   .stepper input::-webkit-outer-spin-button,.stepper input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
+  .setweight{width:76px;flex:0 0 76px;height:44px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;
+    color:var(--ink);text-align:center;font-size:.95rem;font-weight:800;font-family:inherit;-moz-appearance:textfield;min-width:0;}
+  .setweight::-webkit-outer-spin-button,.setweight::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
+  .setweight.inherited{color:var(--muted);font-weight:600;}
+  .setshead{display:flex;justify-content:flex-end;font-size:.62rem;font-weight:700;color:var(--faint);letter-spacing:.04em;margin:10px 0 -4px;}
   .exfoot{display:flex;justify-content:space-between;align-items:center;margin-top:12px;
     padding-top:10px;border-top:1px solid var(--line);}
   .assistrow{margin-top:12px;padding-top:10px;border-top:1px solid var(--line);}
@@ -586,7 +591,7 @@ let online = true;
 const SUPABASE_URL = "https://aqbufgwvlrtegoflqrwl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_1vID-paB_RrmUk5XThwS-g_Qs05BLGH";
 const CACHE_KEY = "calisthenics-75hard-cache-v2";
-const APP_VERSION = "1.2.4";
+const APP_VERSION = "1.3.0";
 const DEBUG = new URLSearchParams(location.search).has("debug");
 document.getElementById("appVer").textContent = "v" + APP_VERSION;
 
@@ -620,6 +625,13 @@ function dateForTab(idx){
 // ---- local cache (offline fallback) ----
 function loadCache(){
   try{ const r=localStorage.getItem(CACHE_KEY); if(r) state=JSON.parse(r); }catch(e){ state={}; }
+  // before 1.3.0 a loaded exercise had one weight ("<id>_weight", set 1); now each set has its own ("<id>_w")
+  Object.values(state).forEach(day=>{ if(!day || typeof day!=="object") return;
+    Object.keys(day).filter(k=>k.endsWith("_weight")).forEach(k=>{
+      const ex = k.slice(0,-7), v = day[k]===""||day[k]==null ? null : +day[k];
+      if(!day[ex+"_w"]) day[ex+"_w"] = [isNaN(v)?null:v, null, null];
+      delete day[k];
+    }); });
 }
 function writeCache(){
   try{ localStorage.setItem(CACHE_KEY, JSON.stringify(state)); }catch(e){}
@@ -801,9 +813,11 @@ function backoff(cfg, n){ return Math.min(cfg.base * Math.pow(2, n-1), cfg.cap);
 
 async function sendOp(op){
   if(op.t==="log"){
+    const f = { ...op.f };
+    if(f.reps===0) f.reps = null;          // never save 0 reps (also covers entries queued by older versions)
     return sb.from("workout_log").upsert({
       user_id:user.id, log_date:op.date, day:op.day,
-      exercise_id:op.ex, set_index:op.set, ...op.f, updated_at:op.ts
+      exercise_id:op.ex, set_index:op.set, ...f, updated_at:op.ts
     }, { onConflict:"user_id,log_date,exercise_id,set_index" });
   }
   if(op.t==="status"){
@@ -895,24 +909,24 @@ function applyOutbox(){
     if(op.t==="status"){ s._done = op.f.completed; return; }
     if("reps" in op.f){
       if(!s[op.ex]) s[op.ex]=[0,0,0];
-      s[op.ex][op.set] = op.f.reps;
+      s[op.ex][op.set] = op.f.reps || 0;
     }
     if("assist" in op.f) s[op.ex+"_assist"] = op.f.assist;
-    if("weight_kg" in op.f){ if(op.f.weight_kg==null) delete s[op.ex+"_weight"]; else s[op.ex+"_weight"] = op.f.weight_kg; }
+    if("weight_kg" in op.f){ const w = s[op.ex+"_w"] = s[op.ex+"_w"] || [null,null,null]; w[op.set] = op.f.weight_kg; }
     if("negatives" in op.f){ if(op.f.negatives==null) delete s[op.ex+"_neg"]; else s[op.ex+"_neg"] = op.f.negatives; }
   });
 }
 
 // ---- cloud writes (all go through the outbox) ----
-function pushSet(dateISO, day, exid, setIdx, reps){
-  enqueue({ t:"log", date:dateISO, day, ex:exid, set:setIdx, f:{ reps } });
+function pushSet(dateISO, day, exid, setIdx, fields){
+  enqueue({ t:"log", date:dateISO, day, ex:exid, set:setIdx, f:fields });
 }
-// assistance, weight and negatives live on the set_index 0 row for this exercise/date
+// assistance and negatives are exercise-level values kept on the set_index 0 row (see the note in fetchHistory)
 function pushAssist(dateISO, day, exid, assist){
   enqueue({ t:"log", date:dateISO, day, ex:exid, set:0, f:{ assist } });
 }
-function pushWeight(dateISO, day, exid, weight){
-  enqueue({ t:"log", date:dateISO, day, ex:exid, set:0, f:{ weight_kg: weight===""?null:(+weight) } });
+function pushSetWeight(dateISO, day, exid, setIdx, weight){
+  enqueue({ t:"log", date:dateISO, day, ex:exid, set:setIdx, f:{ weight_kg: weight } });
 }
 function pushNegatives(dateISO, day, exid, reps){
   enqueue({ t:"log", date:dateISO, day, ex:exid, set:0, f:{ negatives: reps===""?null:(+reps) } });
@@ -957,8 +971,8 @@ function describeOp(op){
   if(op.t==="status") return d+" · "+(op.f.completed ? "Day marked complete" : "Day marked not complete");
   const reg = EX_REGISTRY.find(e=>e.id===op.ex);
   const parts = [];
-  if("reps" in op.f) parts.push("set "+(op.set+1)+": "+op.f.reps+" reps");
-  if("weight_kg" in op.f) parts.push("weight "+(op.f.weight_kg==null?"cleared":op.f.weight_kg+" kg"));
+  if("reps" in op.f) parts.push("set "+(op.set+1)+": "+(op.f.reps ? op.f.reps+" reps" : "cleared"));
+  if("weight_kg" in op.f) parts.push((("reps" in op.f) ? "" : "set "+(op.set+1)+" ")+"weight "+(op.f.weight_kg==null?"cleared":op.f.weight_kg+" kg"));
   if("negatives" in op.f) parts.push("negatives "+(op.f.negatives==null?"cleared":op.f.negatives));
   if("assist" in op.f) parts.push("assistance "+(op.f.assist||"cleared"));
   return d+" · "+(reg?reg.name:op.ex)+" · "+parts.join(", ");
@@ -1033,16 +1047,24 @@ async function pullWeek(){
     const { data:stat, error:e2 } = await sb.from("day_status")
       .select("log_date,completed").in("log_date", dates);
     if(e2) throw e2;
+    // a weight typed for a set not done yet lives only on this device (it's saved with that set's reps)
+    const unsent = [];
+    dates.forEach(d=>{ const day = state[d]; if(!day) return;
+      Object.keys(day).filter(k=>k.endsWith("_w")).forEach(k=>{ const ex = k.slice(0,-2);
+        day[k].forEach((w,i)=>{ if(w!=null && !((day[ex]||[])[i] > 0)) unsent.push([d, ex, i, w]); }); }); });
     // rebuild state for these dates from cloud (cloud is source of truth on load)
     dates.forEach(d=>{ if(state[d]) delete state[d]; });
     (logs||[]).forEach(r=>{
       if(!state[r.log_date]) state[r.log_date]={};
-      if(!state[r.log_date][r.exercise_id]) state[r.log_date][r.exercise_id]=[0,0,0];
-      state[r.log_date][r.exercise_id][r.set_index]=r.reps;
-      if(r.assist!=null && r.assist!=="") state[r.log_date][r.exercise_id+"_assist"]=r.assist;
-      if(r.weight_kg!=null) state[r.log_date][r.exercise_id+"_weight"]=r.weight_kg;
-      if(r.negatives!=null) state[r.log_date][r.exercise_id+"_neg"]=r.negatives;
+      const s = state[r.log_date];
+      if(!s[r.exercise_id]) s[r.exercise_id]=[0,0,0];
+      s[r.exercise_id][r.set_index] = r.reps || 0;              // no reps (cleared set) shows as empty
+      if(r.assist!=null && r.assist!=="") s[r.exercise_id+"_assist"]=r.assist;
+      if(r.weight_kg!=null) (s[r.exercise_id+"_w"] = s[r.exercise_id+"_w"] || [null,null,null])[r.set_index] = r.weight_kg;
+      if(r.negatives!=null) s[r.exercise_id+"_neg"]=r.negatives;
     });
+    unsent.forEach(([d, ex, i, w])=>{ const day = state[d] = state[d] || {}; const arr = day[ex+"_w"] = day[ex+"_w"] || [null,null,null];
+      if(arr[i]==null) arr[i] = w; });
     (stat||[]).forEach(r=>{
       if(!state[r.log_date]) state[r.log_date]={};
       state[r.log_date]._done = r.completed;
@@ -1105,6 +1127,7 @@ function stretchCard(list, num){
 
 function exerciseCard(dateISO,ex){
   const saved = (state[dateISO] && state[dateISO][ex.id]) || [0,0,0];
+  const w = weightsOf(dateISO, ex.id);
   const sets = [0,1,2].map(i=>`
     <div class="setrow">
       <span class="setlbl">Set ${i+1}</span>
@@ -1113,7 +1136,9 @@ function exerciseCard(dateISO,ex){
         <input type="number" inputmode="numeric" pattern="[0-9]*" min="0" value="${saved[i]||''}"
                placeholder="0" data-ex="${ex.id}" data-set="${i}">
         <button data-act="inc" data-ex="${ex.id}" data-set="${i}">+</button>
-      </div>
+      </div>${ex.loaded ? `
+      <input type="number" step="0.5" min="0" inputmode="decimal" class="setweight${isInherited(w,i)?" inherited":""}"
+             data-ex="${ex.id}" data-set="${i}" value="${shownWeight(w,i) ?? ""}" placeholder="kg" aria-label="Set ${i+1} weight, kg">` : ""}
     </div>`).join("");
   const total = saved.reduce((a,b)=>a+(+b||0),0);
   const allHit = saved.every(v=>(+v)>=15);
@@ -1135,21 +1160,15 @@ function exerciseCard(dateISO,ex){
       </label>
       <div class="assisthint">Do these FIRST, while fresh — box/band up to the top, lower as slowly as you can. This is the single biggest lever for closing the pull-up gap.</div>
     </div>` : "";
-  const weightVal = (state[dateISO] && state[dateISO][ex.id+"_weight"]) || "";
   const weightRow = ex.loaded ? `
-    <div class="assistrow">
-      <label>Weight used (kg, per hand/side)
-        <input type="number" step="0.5" inputmode="decimal" class="weightinput" data-ex="${ex.id}" value="${weightVal}"
-               placeholder="e.g. 10">
-      </label>
-      <div class="assisthint">Increase when all 3 sets hit the top of the rep range with clean form for 2 sessions running.</div>
-    </div>` : "";
+    <div class="assisthint">Increase when all 3 sets hit the top of the rep range with clean form for 2 sessions running.</div>` : "";
+  const setsHead = ex.loaded ? `<div class="setshead">kg · per hand/side</div>` : "";
   const advanceTag = (!ex.loaded && allHit) ? `<span class="advance show" data-adv="${ex.id}">Ready to advance ↑</span>` : "";
   return `<div class="card" data-exid="${ex.id}">
     <div class="ex-name">${ex.name}</div>
     <div class="ex-target">${ex.target}</div>
     <div class="ex-cue">${ex.cue}</div>
-    <div class="sets">${sets}</div>
+    ${setsHead}<div class="sets">${sets}</div>
     ${negRow}
     ${weightRow}
     ${assistRow}
@@ -1260,12 +1279,51 @@ function render(){
   bind(viewDate, day.d);
 }
 
+// ---- per-set weights (loaded exercises) ----
+// Every set's row carries its own weight_kg. A set's weight is saved together with its reps, so a set
+// that was never done has no row; until then it shows set 1's weight ("inherited", lighter text).
+// Inheritance is by value: when set 1 changes from A to B, any set still holding A follows it to B;
+// a set holding any other value was set by hand and keeps it. A set typed equal to set 1 follows set 1.
+const isLoaded = exid=>EX_REGISTRY.some(e=>e.id===exid && e.loaded);
+function weightsOf(dateISO, exid){ return (state[dateISO] && state[dateISO][exid+"_w"]) || [null,null,null]; }
+function shownWeight(w, i){ return w[i]!=null ? w[i] : (i>0 ? w[0] : null); }
+function isInherited(w, i){ return i>0 && w[i]==null && w[0]!=null; }
+function setWeight(dateISO, day, exid, setIdx, value){
+  const s = state[dateISO] = state[dateISO] || {};
+  const w = s[exid+"_w"] = s[exid+"_w"] || [null,null,null];
+  const reps = s[exid] || [0,0,0];
+  const old = w[setIdx];
+  w[setIdx] = value;
+  const changed = [setIdx];
+  if(setIdx===0) for(let i=1;i<3;i++) if(w[i]!=null && w[i]===old){ w[i] = value; changed.push(i); }
+  writeCache();                                   // keeps weights for sets not done yet on this device
+  changed.forEach(i=>{ if(reps[i] > 0) pushSetWeight(dateISO, day, exid, i, w[i]); });
+}
+function refreshWeights(dateISO, exid, skipSet){
+  const w = weightsOf(dateISO, exid);
+  document.querySelectorAll(`.setweight[data-ex="${exid}"]`).forEach(inp=>{
+    const i = +inp.dataset.set;
+    inp.classList.toggle("inherited", isInherited(w,i));
+    if(i!==skipSet) inp.value = shownWeight(w,i) ?? "";
+  });
+}
+
+// Reps: 0 is never saved. A set that was never logged stays unwritten; a logged set that is cleared keeps
+// its row with no reps (deletes can't be ordered by the newest-edit rule) and is ignored everywhere.
 function setVal(dateISO,day,exid,setIdx,val){
   if(!state[dateISO]) state[dateISO]={};
   if(!state[dateISO][exid]) state[dateISO][exid]=[0,0,0];
+  const prev = +state[dateISO][exid][setIdx] || 0;
   const v = Math.max(0, val||0);
   state[dateISO][exid][setIdx] = v;
-  pushSet(dateISO, day, exid, setIdx, v);
+  if(v===0 && prev===0){ writeCache(); return; }
+  const fields = { reps: v>0 ? v : null };
+  if(v>0 && isLoaded(exid)){
+    const w = state[dateISO][exid+"_w"] = state[dateISO][exid+"_w"] || [null,null,null];
+    if(w[setIdx]==null && setIdx>0 && w[0]!=null) w[setIdx] = w[0];   // the inherited weight is saved with the reps
+    if(w[setIdx]!=null) fields.weight_kg = w[setIdx];
+  }
+  pushSet(dateISO, day, exid, setIdx, fields);
 }
 
 function refreshTotals(dateISO,exid){
@@ -1284,6 +1342,7 @@ function bind(dateISO, day){
       let v = parseInt(inp.value)||0; if(v<0){v=0;inp.value=0;}
       setVal(dateISO,day,inp.dataset.ex,+inp.dataset.set,v);
       refreshTotals(dateISO,inp.dataset.ex);
+      refreshWeights(dateISO,inp.dataset.ex);
       renderDayDots();
     };
   });
@@ -1296,6 +1355,7 @@ function bind(dateISO, day){
       inp.value=v||'';
       setVal(dateISO,day,exid,si,v);
       refreshTotals(dateISO,exid);
+      refreshWeights(dateISO,exid);
       renderDayDots();
     };
   });
@@ -1307,12 +1367,13 @@ function bind(dateISO, day){
       pushAssist(dateISO, day, exid, inp.value);
     };
   });
-  document.querySelectorAll('.weightinput').forEach(inp=>{
+  document.querySelectorAll('.setweight').forEach(inp=>{
     inp.oninput = ()=>{
-      const exid=inp.dataset.ex;
-      if(!state[dateISO]) state[dateISO]={};
-      state[dateISO][exid+"_weight"]=inp.value;
-      pushWeight(dateISO, day, exid, inp.value);
+      const exid=inp.dataset.ex, si=+inp.dataset.set;
+      const v = inp.value==="" ? null : +inp.value;
+      if(v!=null && (isNaN(v) || v<0)) return;
+      setWeight(dateISO, day, exid, si, v);
+      refreshWeights(dateISO, exid, si);
     };
   });
   document.querySelectorAll('.neginput').forEach(inp=>{
@@ -1503,7 +1564,7 @@ document.getElementById("authEmail").addEventListener("keydown",e=>{
 
 // ================= PROGRESS VIEW =================
 let currentView = "train";
-let historyCache = null;   // { exId: [ {date, total}, ... ] }
+let historyCache = null;   // { sessions:{ exId:[{date,total,weight}] }, negatives:{ exId:[{date,negatives}] } }
 
 function switchView(v){
   currentView = v;
@@ -1549,33 +1610,41 @@ async function fetchAllRows(build){
 
 async function fetchHistory(force){
   if(historyCache && !force) return historyCache;
-  const byEx = {};
-  EX_REGISTRY.forEach(e=> byEx[e.id]=[]);
+  const byEx = {}, negByEx = {};
+  EX_REGISTRY.forEach(e=>{ byEx[e.id]=[]; negByEx[e.id]=[]; });
   if(user && sb){
     try{
       // pull every set (in pages); aggregate to per-date totals per exercise
       const data = await fetchAllRows(()=>sb.from("workout_log")
         .select("log_date,exercise_id,set_index,reps,weight_kg,negatives")
         .order("log_date", { ascending:true }).order("exercise_id", { ascending:true }).order("set_index", { ascending:true }));
-      const agg = {}; // key exId|date -> total
-      const wgt = {};  // key exId|date -> weight (from set_index 0)
-      const neg = {};  // key exId|date -> negatives reps (from set_index 0)
+      // Reading rules:
+      //  - a set counts only if it has reps (> 0); a cleared set's row (no reps) is ignored everywhere
+      //  - a date is a session for an exercise only if at least one of its sets has reps
+      //  - working weight = set 1's weight (the first set with reps if set 1 wasn't logged)
+      //  - negatives (and assistance) are exercise-level values kept on set 1's row and are read from it
+      //    whether or not set 1 has reps. Since 1.3.0 set 1's row is no longer special for weight, but it
+      //    still is for these. Don't "normalise" this away: a date with negatives but no logged sets is
+      //    real data and must stay on the negatives chart (it just isn't a session).
+      const agg = {}; // key exId|date -> total reps
+      const wgt = {};  // key exId|date -> [set_index, weight] of the working set
       (data||[]).forEach(r=>{
         if(!byEx[r.exercise_id]) return;
         const k = r.exercise_id+"|"+r.log_date;
-        agg[k] = (agg[k]||0) + (r.reps||0);
-        if(r.set_index===0 && r.weight_kg!=null) wgt[k]=r.weight_kg;
-        if(r.set_index===0 && r.negatives!=null) neg[k]=r.negatives;
+        if(r.set_index===0 && r.negatives!=null) negByEx[r.exercise_id].push({ date:r.log_date, negatives:r.negatives });
+        if(!(r.reps > 0)) return;
+        agg[k] = (agg[k]||0) + r.reps;
+        if(r.weight_kg!=null && (!wgt[k] || r.set_index < wgt[k][0])) wgt[k] = [r.set_index, r.weight_kg];
       });
       Object.keys(agg).forEach(k=>{
         const [exId,date]=k.split("|");
-        byEx[exId].push({ date, total: agg[k], weight: wgt[k]!=null?wgt[k]:null, negatives: neg[k]!=null?neg[k]:null });
+        byEx[exId].push({ date, total: agg[k], weight: wgt[k] ? wgt[k][1] : null });
       });
-      Object.keys(byEx).forEach(exId=> byEx[exId].sort((a,b)=> a.date<b.date?-1:1));
+      Object.keys(byEx).forEach(exId=>{ byEx[exId].sort((a,b)=> a.date<b.date?-1:1); negByEx[exId].sort((a,b)=> a.date<b.date?-1:1); });
     }catch(e){ captureError("HISTORY", e); }
   }
-  historyCache = byEx;
-  return byEx;
+  historyCache = { sessions:byEx, negatives:negByEx };
+  return historyCache;
 }
 
 function lineChartSVG(points, color){
@@ -1628,7 +1697,8 @@ async function renderProgress(){
   </div>`;
 
   EX_REGISTRY.forEach(ex=>{
-    const pts = hist[ex.id] || [];
+    const pts = hist.sessions[ex.id] || [];
+    const negs = hist.negatives[ex.id] || [];
     const best = pts.length ? Math.max(...pts.map(p=>p.total)) : 0;
     const bestWeight = pts.length ? Math.max(...pts.filter(p=>p.weight!=null).map(p=>p.weight), 0) : 0;
     const recent = pts.slice(-3);
@@ -1648,13 +1718,11 @@ async function renderProgress(){
       } else {
         html += lineChartSVG(pts, ex.color);
       }
-      if(ex.negatives){
-        const npts = pts.filter(p=>p.negatives!=null).map(p=>({log_date:p.date, n:p.negatives}));
-        if(npts.length){
-          html += `<div class="sub" style="margin-top:12px">Negatives — clean reps per session (full dead-hang lower)</div>`;
-          html += metricChartSVG(npts, "n", "#f0c14f", null);
-        }
-      }
+    }
+    // negatives: their own series from set 1's row, so a date with negatives but no logged sets still shows
+    if(negs.length){
+      html += `<div class="sub" style="margin-top:12px">Negatives — clean reps per session (full dead-hang lower)</div>`;
+      html += metricChartSVG(negs.map(p=>({ log_date:p.date, n:p.negatives })), "n", "#f0c14f", null);
     }
     html += `</div>`;
   });
