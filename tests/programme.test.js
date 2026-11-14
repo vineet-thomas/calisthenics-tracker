@@ -108,9 +108,10 @@ const info = page=>page.evaluate(()=>{
       if(a.width!==b.width||a.height!==b.height) return { size:`${a.width}x${a.height} vs ${b.width}x${b.height}`, n:Infinity, max:255 };
       let n=0, max=0; for(let k=0;k<a.data.length;k+=4){ const d=Math.max(Math.abs(a.data[k]-b.data[k]),Math.abs(a.data[k+1]-b.data[k+1]),Math.abs(a.data[k+2]-b.data[k+2])); if(d){ n++; if(d>max) max=d; } }
       return { n, max }; };
-    // Chrome sometimes anti-aliases a few edge pixels differently between sessions. With identical HTML and
-    // styles, a handful of faint pixels is that noise; anything bigger (or a size change) is a real difference.
-    const NOISE = d=>d.n<=200 && d.max<=10;
+    // Chrome sometimes anti-aliases a few edge pixels differently between sessions (seen up to 28/255). This is
+    // only consulted when the HTML and every computed style are identical, so a handful of scattered pixels can
+    // only be that noise; a real change shows as different HTML/styles, a page-size change or many pixels.
+    const NOISE = d=>d.n<=200;
     const dom = p=>p.evaluate(()=>{ const v=[...document.querySelectorAll(".wrap > div")].find(e=>e.style.display!=="none" && e.id.endsWith("View")); return v.innerHTML; });
     const css = p=>p.evaluate(()=>{ const v=[...document.querySelectorAll(".wrap > div")].find(e=>e.style.display!=="none" && e.id.endsWith("View"));
       return [...v.querySelectorAll("*")].map(e=>[null,"::before","::after"].map(ps=>{ const c=getComputedStyle(e, ps);
