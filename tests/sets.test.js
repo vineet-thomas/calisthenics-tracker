@@ -1,5 +1,6 @@
-// Per-set weights (brief item A) and "never save 0 reps" (item D), plus the reading rules:
-// sets without reps are invisible; a date is a session only if a set has reps; negatives are read
+// Per-set weights (brief item A) and cleared sets (item D), plus the reading rules. workout_log.reps is
+// integer NOT NULL: reps = 0 means "cleared" and null is never sent (the fake refuses it, like Supabase).
+// Sets with reps = 0 are invisible; a date is a session only if a set has reps > 0; negatives are read
 // from set 1's row regardless. Fake backend; Monday's Push (ohpress is a loaded exercise), Friday's
 // Pull (rows records negatives).
 const { chromium } = require("playwright-core");
@@ -67,25 +68,29 @@ const field = async (page, ex, i)=>({ v: await page.inputValue(wt(ex,i)), inheri
     check("D1 '−' on an empty set writes nothing", cloud(S,"pushups")==="" && S.writes("pushups")===0, `${S.writes("pushups")} writes`);
     await page.fill(reps("pushups",0), "12"); await sleep(900);
     await page.fill(reps("pushups",0), ""); await sleep(900);
-    check("D2 clearing a logged set keeps its row with no reps — never 0 (acceptance 5)", cloud(S,"pushups")==="1:-@-", cloud(S,"pushups"));
+    check("D2 clearing a logged set keeps its row with reps = 0 (cleared), and it syncs", cloud(S,"pushups")==="1:0@-" && (await badge(page))==="Synced", `${cloud(S,"pushups")} ${await badge(page)}`);
     await page.fill(reps("pushups",1), "5"); await sleep(400);
     for(let k=0;k<5;k++){ await page.click('.stepper button[data-act="dec"][data-ex="pushups"][data-set="1"]'); await sleep(60); }
     await sleep(900);
-    check("D3 stepping a set down to 0 saves no reps, not 0", cloud(S,"pushups")==="1:-@- 2:-@-", cloud(S,"pushups"));
-    const zeros = S.calls.filter(c=>c.op==="upsert" && c.body.reps===0).length;
-    check("D4 no request ever carried reps = 0", zeros===0, `${zeros} with reps 0`);
+    check("D3 stepping a set down to 0 saves reps = 0 (cleared)", cloud(S,"pushups")==="1:0@- 2:0@-", cloud(S,"pushups"));
+    const nulls = S.calls.filter(c=>c.op==="upsert" && c.body.reps===null).length;
+    check("D4 no request ever carried reps = null (workout_log.reps is NOT NULL)", nulls===0, `${nulls} with null`);
     await done(page); }
 
-  // D5: an entry queued by an older version with reps 0 is sent as "no reps"
+  // D5/D6: entries left in the queue by older versions: reps 0 (pre-1.3.0) and reps null (1.3.0)
   { const S = makeServer(); S.offline = true;
     const page = await newPage(browser, BASE, S, { before: async p=>p.addInitScript(()=>{
       if(sessionStorage.getItem("seeded")) return; sessionStorage.setItem("seeded","1");
       const t=new Date(), o=t.getDay()===0?-6:1-t.getDay(); t.setDate(t.getDate()+o);
       const mon = t.getFullYear()+"-"+String(t.getMonth()+1).padStart(2,"0")+"-"+String(t.getDate()).padStart(2,"0");
-      localStorage.setItem("calisthenics-outbox-v1", JSON.stringify([{ t:"log", uid:"u1", date:mon, day:"Mon", ex:"dips", set:2, f:{ reps:0 }, ts:new Date().toISOString(), rev:1 }])); }) });
+      localStorage.setItem("calisthenics-outbox-v1", JSON.stringify([
+        { t:"log", uid:"u1", date:mon, day:"Mon", ex:"dips", set:2, f:{ reps:0 }, ts:new Date().toISOString(), rev:1 },
+        { t:"log", uid:"u1", date:mon, day:"Mon", ex:"pushups", set:1, f:{ reps:null }, ts:new Date().toISOString(), rev:1 }])); }) });
     S.offline = false; await page.evaluate(()=>window.dispatchEvent(new Event("online"))); await sleep(1500);
-    const sent = S.calls.filter(c=>c.op==="upsert" && c.body.exercise_id==="dips");
-    check("D5 a queued reps = 0 from an older version is sent as no reps", sent.length===1 && sent[0].body.reps===null, JSON.stringify(sent.map(c=>c.body.reps)));
+    const sent = S.calls.filter(c=>c.op==="upsert").map(c=>`${c.body.exercise_id}:${c.body.reps}`);
+    const st = await page.evaluate(()=>({ pending:myOutbox().length, failed:myFailed().length }));
+    check("D5 an old queued reps = 0 goes through as 0", sent.includes("dips:0"), sent.join(", "));
+    check("D6 a reps = null queued by 1.3.0 is sent as 0 and accepted (nothing set aside)", sent.includes("pushups:0") && !sent.includes("pushups:null") && st.failed===0 && st.pending===0 && (await badge(page))==="Synced", `${sent.join(", ")} ${JSON.stringify(st)}`);
     await done(page); }
 
   // R1–R3: reading rules in Progress
@@ -93,18 +98,18 @@ const field = async (page, ex, i)=>({ v: await page.inputValue(wt(ex,i)), inheri
       // 5 Oct: a real session (2 sets)
       { user_id:"u1", log_date:"2026-10-05", day:"Mon", exercise_id:"rows", set_index:0, reps:8, negatives:4, updated_at:"2026-10-05T00:00:00Z" },
       { user_id:"u1", log_date:"2026-10-05", day:"Mon", exercise_id:"rows", set_index:1, reps:7, updated_at:"2026-10-05T00:00:00Z" },
-      // 12 Oct: negatives recorded, no set has reps (cleared / never logged) → not a session, still on the negatives chart
-      { user_id:"u1", log_date:"2026-10-12", day:"Mon", exercise_id:"rows", set_index:0, reps:null, negatives:5, updated_at:"2026-10-12T00:00:00Z" },
-      // 19 Oct: legacy reps = 0 and a cleared set → invisible
+      // 12 Oct: negatives recorded, no set has reps > 0 → not a session, still on the negatives chart
+      { user_id:"u1", log_date:"2026-10-12", day:"Mon", exercise_id:"rows", set_index:0, reps:0, negatives:5, updated_at:"2026-10-12T00:00:00Z" },
+      // 19 Oct: only cleared sets (reps = 0) → invisible
       { user_id:"u1", log_date:"2026-10-19", day:"Mon", exercise_id:"rows", set_index:0, reps:0, updated_at:"2026-10-19T00:00:00Z" },
-      { user_id:"u1", log_date:"2026-10-19", day:"Mon", exercise_id:"rows", set_index:1, reps:null, updated_at:"2026-10-19T00:00:00Z" },
+      { user_id:"u1", log_date:"2026-10-19", day:"Mon", exercise_id:"rows", set_index:1, reps:0, updated_at:"2026-10-19T00:00:00Z" },
       // ohpress: per-set weights, working weight is set 1's
       { user_id:"u1", log_date:"2026-10-05", day:"Mon", exercise_id:"ohpress", set_index:0, reps:10, weight_kg:10.5, updated_at:"2026-10-05T00:00:00Z" },
       { user_id:"u1", log_date:"2026-10-05", day:"Mon", exercise_id:"ohpress", set_index:2, reps:10, weight_kg:8, updated_at:"2026-10-05T00:00:00Z" },
     ] });
     const page = await newPage(browser, BASE, S);
     const h = await page.evaluate(async()=>{ const x = await fetchHistory(true); return { rows:x.sessions.rows, neg:x.negatives.rows, oh:x.sessions.ohpress }; });
-    check("R1 sets without reps (cleared, or legacy 0) are invisible: only 5 Oct is a session", h.rows.length===1 && h.rows[0].date==="2026-10-05" && h.rows[0].total===15, JSON.stringify(h.rows));
+    check("R1 sets with reps = 0 (cleared) are invisible: only 5 Oct is a session", h.rows.length===1 && h.rows[0].date==="2026-10-05" && h.rows[0].total===15, JSON.stringify(h.rows));
     check("R2 negatives are read from set 1's row regardless: 5 Oct and 12 Oct both on the series", h.neg.map(n=>n.date+":"+n.negatives).join(",")==="2026-10-05:4,2026-10-12:5", JSON.stringify(h.neg));
     check("R3 working weight is set 1's (10.5), not a later set's (8)", h.oh.length===1 && h.oh[0].weight===10.5, JSON.stringify(h.oh));
     await page.click("#tabProgress"); await sleep(800);

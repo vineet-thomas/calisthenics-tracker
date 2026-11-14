@@ -591,7 +591,7 @@ let online = true;
 const SUPABASE_URL = "https://aqbufgwvlrtegoflqrwl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_1vID-paB_RrmUk5XThwS-g_Qs05BLGH";
 const CACHE_KEY = "calisthenics-75hard-cache-v2";
-const APP_VERSION = "1.3.0";
+const APP_VERSION = "1.3.1";
 const DEBUG = new URLSearchParams(location.search).has("debug");
 document.getElementById("appVer").textContent = "v" + APP_VERSION;
 
@@ -814,7 +814,9 @@ function backoff(cfg, n){ return Math.min(cfg.base * Math.pow(2, n-1), cfg.cap);
 async function sendOp(op){
   if(op.t==="log"){
     const f = { ...op.f };
-    if(f.reps===0) f.reps = null;          // never save 0 reps (also covers entries queued by older versions)
+    // workout_log.reps is integer NOT NULL: reps = 0 means "cleared". Never send null — Supabase rejects it.
+    // (1.3.0 briefly sent null for a cleared set; any such entry still queued or set aside is sent as 0.)
+    if(f.reps===null) f.reps = 0;
     return sb.from("workout_log").upsert({
       user_id:user.id, log_date:op.date, day:op.day,
       exercise_id:op.ex, set_index:op.set, ...f, updated_at:op.ts
@@ -1058,7 +1060,7 @@ async function pullWeek(){
       if(!state[r.log_date]) state[r.log_date]={};
       const s = state[r.log_date];
       if(!s[r.exercise_id]) s[r.exercise_id]=[0,0,0];
-      s[r.exercise_id][r.set_index] = r.reps || 0;              // no reps (cleared set) shows as empty
+      s[r.exercise_id][r.set_index] = r.reps || 0;              // reps = 0 means cleared: shows as empty
       if(r.assist!=null && r.assist!=="") s[r.exercise_id+"_assist"]=r.assist;
       if(r.weight_kg!=null) (s[r.exercise_id+"_w"] = s[r.exercise_id+"_w"] || [null,null,null])[r.set_index] = r.weight_kg;
       if(r.negatives!=null) s[r.exercise_id+"_neg"]=r.negatives;
@@ -1308,8 +1310,9 @@ function refreshWeights(dateISO, exid, skipSet){
   });
 }
 
-// Reps: 0 is never saved. A set that was never logged stays unwritten; a logged set that is cleared keeps
-// its row with no reps (deletes can't be ordered by the newest-edit rule) and is ignored everywhere.
+// Reps: workout_log.reps is integer NOT NULL, and reps = 0 means "cleared" — never send null.
+// A set that was never logged stays unwritten (no row). A logged set that is cleared keeps its row with
+// reps = 0 (deletes can't be ordered by the newest-edit rule); every reader ignores sets with reps = 0.
 function setVal(dateISO,day,exid,setIdx,val){
   if(!state[dateISO]) state[dateISO]={};
   if(!state[dateISO][exid]) state[dateISO][exid]=[0,0,0];
@@ -1317,7 +1320,7 @@ function setVal(dateISO,day,exid,setIdx,val){
   const v = Math.max(0, val||0);
   state[dateISO][exid][setIdx] = v;
   if(v===0 && prev===0){ writeCache(); return; }
-  const fields = { reps: v>0 ? v : null };
+  const fields = { reps: v };                      // 0 = cleared (see above); never null
   if(v>0 && isLoaded(exid)){
     const w = state[dateISO][exid+"_w"] = state[dateISO][exid+"_w"] || [null,null,null];
     if(w[setIdx]==null && setIdx>0 && w[0]!=null) w[setIdx] = w[0];   // the inherited weight is saved with the reps
@@ -1619,7 +1622,7 @@ async function fetchHistory(force){
         .select("log_date,exercise_id,set_index,reps,weight_kg,negatives")
         .order("log_date", { ascending:true }).order("exercise_id", { ascending:true }).order("set_index", { ascending:true }));
       // Reading rules:
-      //  - a set counts only if it has reps (> 0); a cleared set's row (no reps) is ignored everywhere
+      //  - a set counts only if reps > 0; reps = 0 means cleared and is ignored everywhere
       //  - a date is a session for an exercise only if at least one of its sets has reps
       //  - working weight = set 1's weight (the first set with reps if set 1 wasn't logged)
       //  - negatives (and assistance) are exercise-level values kept on set 1's row and are read from it

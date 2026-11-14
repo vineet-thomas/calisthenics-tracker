@@ -57,6 +57,9 @@ function makeServer(seed){
   S.handle = st=>{
     S.calls.push(st);
     if(S.down && st.table!=="error_log") return { status:503, data:null, error:{ message:"Service Unavailable", code:"" } };
+    // workout_log.reps is integer NOT NULL on Supabase: null is refused
+    if(st.op==="upsert" && st.table==="workout_log" && st.body.reps===null)
+      return { status:400, data:null, error:{ message:'null value in column "reps" of relation "workout_log" violates not-null constraint', code:"23502" } };
     if(st.op==="upsert" && S.reject.has(st.body.exercise_id))
       return { status:403, data:null, error:{ message:'new row violates row-level security policy for table "workout_log"', code:"42501" } };
     const rows = S.db[st.table] = S.db[st.table] || [];
