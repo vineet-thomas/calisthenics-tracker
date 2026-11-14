@@ -101,7 +101,7 @@
   .setweight{width:76px;flex:0 0 76px;height:44px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;
     color:var(--ink);text-align:center;font-size:.95rem;font-weight:800;font-family:inherit;-moz-appearance:textfield;min-width:0;}
   .setweight::-webkit-outer-spin-button,.setweight::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
-  .setweight.inherited{color:var(--muted);font-weight:600;}
+  .setweight.inherited::placeholder{color:var(--muted);font-weight:600;opacity:1;}
   .setshead{display:flex;justify-content:flex-end;font-size:.62rem;font-weight:700;color:var(--faint);letter-spacing:.04em;margin:10px 0 -4px;}
   .exfoot{display:flex;justify-content:space-between;align-items:center;margin-top:12px;
     padding-top:10px;border-top:1px solid var(--line);}
@@ -591,7 +591,7 @@ let online = true;
 const SUPABASE_URL = "https://aqbufgwvlrtegoflqrwl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_1vID-paB_RrmUk5XThwS-g_Qs05BLGH";
 const CACHE_KEY = "calisthenics-75hard-cache-v2";
-const APP_VERSION = "1.3.1";
+const APP_VERSION = "1.3.2";
 const DEBUG = new URLSearchParams(location.search).has("debug");
 document.getElementById("appVer").textContent = "v" + APP_VERSION;
 
@@ -1129,7 +1129,7 @@ function stretchCard(list, num){
 
 function exerciseCard(dateISO,ex){
   const saved = (state[dateISO] && state[dateISO][ex.id]) || [0,0,0];
-  const w = weightsOf(dateISO, ex.id);
+  const wf = ex.loaded ? [0,1,2].map(i=>weightField(dateISO, ex.id, i)) : [];
   const sets = [0,1,2].map(i=>`
     <div class="setrow">
       <span class="setlbl">Set ${i+1}</span>
@@ -1139,8 +1139,8 @@ function exerciseCard(dateISO,ex){
                placeholder="0" data-ex="${ex.id}" data-set="${i}">
         <button data-act="inc" data-ex="${ex.id}" data-set="${i}">+</button>
       </div>${ex.loaded ? `
-      <input type="number" step="0.5" min="0" inputmode="decimal" class="setweight${isInherited(w,i)?" inherited":""}"
-             data-ex="${ex.id}" data-set="${i}" value="${shownWeight(w,i) ?? ""}" placeholder="kg" aria-label="Set ${i+1} weight, kg">` : ""}
+      <input type="number" step="0.5" min="0" inputmode="decimal" class="setweight${wf[i].inherited?" inherited":""}"
+             data-ex="${ex.id}" data-set="${i}" value="${wf[i].value}" placeholder="${wf[i].placeholder}" aria-label="Set ${i+1} weight, kg">` : ""}
     </div>`).join("");
   const total = saved.reduce((a,b)=>a+(+b||0),0);
   const allHit = saved.every(v=>(+v)>=15);
@@ -1283,13 +1283,23 @@ function render(){
 
 // ---- per-set weights (loaded exercises) ----
 // Every set's row carries its own weight_kg. A set's weight is saved together with its reps, so a set
-// that was never done has no row; until then it shows set 1's weight ("inherited", lighter text).
+// that was never done has no row.
 // Inheritance is by value: when set 1 changes from A to B, any set still holding A follows it to B;
 // a set holding any other value was set by hand and keeps it. A set typed equal to set 1 follows set 1.
+// What a weight box shows:
+//   - a set with reps always shows the weight stored for it;
+//   - while the day is open (not marked complete), a set with no weight of its own shows set 1's weight
+//     as its placeholder ("inherited") — a hint, never a value, so the box itself stays empty;
+//   - once the day is complete, a set without reps shows no weight at all.
 const isLoaded = exid=>EX_REGISTRY.some(e=>e.id===exid && e.loaded);
 function weightsOf(dateISO, exid){ return (state[dateISO] && state[dateISO][exid+"_w"]) || [null,null,null]; }
-function shownWeight(w, i){ return w[i]!=null ? w[i] : (i>0 ? w[0] : null); }
-function isInherited(w, i){ return i>0 && w[i]==null && w[0]!=null; }
+function dayOpen(dateISO){ return !(state[dateISO] && state[dateISO]._done); }
+function weightField(dateISO, exid, i){
+  const w = weightsOf(dateISO, exid), open = dayOpen(dateISO);
+  const logged = ((state[dateISO] && state[dateISO][exid]) || [])[i] > 0;
+  const inherited = open && i>0 && w[i]==null && w[0]!=null;
+  return { value: (logged || open) && w[i]!=null ? w[i] : "", placeholder: inherited ? w[0] : "kg", inherited };
+}
 function setWeight(dateISO, day, exid, setIdx, value){
   const s = state[dateISO] = state[dateISO] || {};
   const w = s[exid+"_w"] = s[exid+"_w"] || [null,null,null];
@@ -1302,11 +1312,11 @@ function setWeight(dateISO, day, exid, setIdx, value){
   changed.forEach(i=>{ if(reps[i] > 0) pushSetWeight(dateISO, day, exid, i, w[i]); });
 }
 function refreshWeights(dateISO, exid, skipSet){
-  const w = weightsOf(dateISO, exid);
   document.querySelectorAll(`.setweight[data-ex="${exid}"]`).forEach(inp=>{
-    const i = +inp.dataset.set;
-    inp.classList.toggle("inherited", isInherited(w,i));
-    if(i!==skipSet) inp.value = shownWeight(w,i) ?? "";
+    const i = +inp.dataset.set, f = weightField(dateISO, exid, i);
+    inp.classList.toggle("inherited", f.inherited);
+    inp.placeholder = f.placeholder;
+    if(i!==skipSet) inp.value = f.value;
   });
 }
 
