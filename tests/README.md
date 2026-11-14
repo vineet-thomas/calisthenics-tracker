@@ -1,6 +1,6 @@
 # Tests
 
-Run before every PR (CLAUDE.md rules 4 and 5). Everything runs locally in your installed Google Chrome;
+Run before every PR (AGENTS.md rules 4 and 5). Everything runs locally in your installed Google Chrome;
 nothing touches the live Supabase project.
 
 ```bash
