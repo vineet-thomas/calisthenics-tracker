@@ -121,3 +121,4 @@ The owner designs changes with Claude in a claude.ai Project, then brings them h
 the repo may have moved on. If a brief supersedes an earlier one, confirm which version the
 file is actually at before starting — applying a stale brief has silently reverted live fixes
 on the sibling app before.
+
