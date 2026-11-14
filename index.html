@@ -2225,6 +2225,7 @@ async function renderActivityView(){
   el.innerHTML=html;
 }
 
+navigator.serviceWorker.register("sw.js");   // GUARD DEMO — must fail
 initAuth();
 setTimeout(updateTabFade, 300);
 

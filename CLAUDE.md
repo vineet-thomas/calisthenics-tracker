@@ -4,6 +4,7 @@ Instructions for any coding agent working in this repository (loaded via `openco
 before changing anything.
 
 ## NEVER
+<!-- guard demo -->
 
 These are irreversible or unrecoverable. No exceptions without the owner's explicit say-so in the session.
 
