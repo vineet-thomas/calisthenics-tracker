@@ -1,0 +1,24 @@
+# Runs the pre-commit check on GitHub's side for every PR to main, so it doesn't depend on a session
+# choosing to run it. Make "guard" a required status check in main's branch protection.
+name: guard
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0            # full history, so the rules-immutability check can diff against main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: node tests/check.js
+        run: node tests/check.js
+        env:
+          CHECK_BASE: origin/${{ github.base_ref }}
+      - name: check self-test (the check still catches what it should)
+        run: node tests/check.selftest.js
