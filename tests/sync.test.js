@@ -19,7 +19,8 @@ const badge = p=>p.locator("#syncBadge").textContent();
     check("1a online entry reaches cloud", S.rows().includes("pushups[0] reps=10 w=undefined"), await badge(page));
     S.offline = true;
     await page.fill(set("pushups",1), "12"); await sleep(600);
-    await page.fill('.weightinput[data-ex="ohpress"]', "15"); await sleep(1000);
+    await page.fill('.setweight[data-ex="ohpress"][data-set="0"]', "15"); await sleep(150);
+    await page.fill(set("ohpress",0), "8"); await sleep(1000);
     check("1b offline: badge counts unsynced", /unsynced/.test(await badge(page)), await badge(page));
     S.offline = false; await page.reload2(1500);
     check("1c offline entries survive refresh and sync", await page.inputValue(set("pushups",1))==="12" && S.rows().includes("pushups[1] reps=12 w=undefined") && S.rows().some(x=>x.startsWith("ohpress[0]")&&x.endsWith("w=15")));
@@ -116,9 +117,10 @@ const badge = p=>p.locator("#syncBadge").textContent();
 
   // 7. typing is merged, not one request per keystroke
   { const S = makeServer(); const page = await newPage(browser, BASE, S);
-    await page.click('.weightinput[data-ex="ohpress"]');
+    await page.fill(set("ohpress",0), "8"); await sleep(1500);                 // set logged: 1 request
+    await page.click('.setweight[data-ex="ohpress"][data-set="0"]');
     await page.keyboard.type("12.5", { delay:80 }); await sleep(1500);
-    check("7a '12.5' typed → one request, final value saved", S.writes("ohpress")===1 && S.rows().some(x=>x.startsWith("ohpress[0]")&&x.endsWith("w=12.5")), `requests=${S.writes("ohpress")}`);
+    check("7a '12.5' typed → one more request, final value saved", S.writes("ohpress")===2 && S.rows().some(x=>x.startsWith("ohpress[0]")&&x.endsWith("w=12.5")), `requests=${S.writes("ohpress")}`);
     await done(page); }
 
   // 8. storage persistence notice

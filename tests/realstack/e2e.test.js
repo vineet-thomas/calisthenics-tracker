@@ -97,6 +97,20 @@ function token(){   // a local JWT for the test user, signed with the local test
   check("R7 an older offline toggle loses to a newer one (HTTP 200) and ends Synced", db()==="null" && !(await deloadOn()) && (await badge())==="Synced" && st7.pending===0 && st7.failed===0 && w7.length===1 && w7[0].status===200,
     `db=${db()} ${JSON.stringify(st7)} ${w7.map(x=>"HTTP "+x.status).join(",")}`);
 
+  // per-set weights and "never save 0" (1.3.0) through PostgREST, RLS and the newest-edit trigger
+  const rowsOf = ex=>sql(`select string_agg((set_index+1)||':'||coalesce(reps::text,'-')||'@'||coalesce(weight_kg::text,'-'), ' ' order by set_index) from workout_log where exercise_id='${ex}' and log_date='${day}'`);
+  await page.fill('.setweight[data-ex="ohpress"][data-set="0"]', "10.5"); await sleep(200);
+  for(const i of [0,1,2]){ await page.fill(set("ohpress",i), "10"); await sleep(200); }
+  await sleep(1500);
+  check("P1 weight once, three sets → three rows each with weight_kg", rowsOf("ohpress")==="1:10@10.5 2:10@10.5 3:10@10.5", rowsOf("ohpress"));
+  await page.fill('.setweight[data-ex="ohpress"][data-set="2"]', "8"); await sleep(300);
+  await page.fill('.setweight[data-ex="ohpress"][data-set="0"]', "11.5"); await sleep(1500);
+  check("P2 hand-edited set 3 keeps its weight when set 1 changes", rowsOf("ohpress")==="1:10@11.5 2:10@11.5 3:10@8", rowsOf("ohpress"));
+  await page.fill(set("ohpress",2), ""); await sleep(1500);
+  check("P3 clearing a set stores no reps (never 0)", rowsOf("ohpress")==="1:10@11.5 2:10@11.5 3:-@8" && sql("select count(*) from workout_log where reps = 0")==="0", rowsOf("ohpress"));
+  await reload(3000);
+  check("P4 after a refresh the cleared set is empty and the weights are per set", await page.inputValue(set("ohpress",2))==="" && await page.inputValue('.setweight[data-ex="ohpress"][data-set="2"]')==="8");
+
   await browser.close();
   finish("realstack app", errors);
 })();
