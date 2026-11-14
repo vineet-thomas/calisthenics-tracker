@@ -1,4 +1,4 @@
-// Proves tests/check.js catches what it should: runs it against altered copies of index.html.
+// Proves tests/check.js catches what it should: runs it against altered copies of the repo's fixtures.
 const fs = require("fs"), path = require("path"), { spawnSync } = require("child_process");
 const ROOT = path.resolve(__dirname, ".."), TMP = path.join(__dirname, ".tmp", "checkself");
 const { reporter } = require("./lib/fake");
@@ -6,14 +6,25 @@ const { check, finish } = reporter();
 const html = fs.readFileSync(path.join(ROOT, "index.html"), "utf8");
 const lock = fs.readFileSync(path.join(ROOT, "ids.lock.json"), "utf8");
 const manifest = fs.readFileSync(path.join(ROOT, "manifest.webmanifest"), "utf8");
+const agents = fs.readFileSync(path.join(ROOT, "AGENTS.md"), "utf8");
+const claude = fs.readFileSync(path.join(ROOT, "CLAUDE.md"), "utf8");
 
 function run(name, mutate, expectPass, expectText, changedFiles=""){
   fs.rmSync(TMP, { recursive:true, force:true }); fs.mkdirSync(TMP, { recursive:true });
-  const files = mutate({ html, lock, manifest });
+  const files = mutate({ html, lock, manifest, agents, claude });
   fs.writeFileSync(path.join(TMP, "index.html"), files.html);
   fs.writeFileSync(path.join(TMP, "ids.lock.json"), files.lock);
   fs.writeFileSync(path.join(TMP, "manifest.webmanifest"), files.manifest);
-  const r = spawnSync(process.execPath, [path.join(__dirname, "check.js")], { env:{ ...process.env, CHECK_ROOT:TMP, CHECK_CHANGED_FILES:changedFiles }, encoding:"utf8" });
+  fs.writeFileSync(path.join(TMP, "AGENTS.md"), files.agents ?? agents);
+  fs.writeFileSync(path.join(TMP, "CLAUDE.md"), files.claude ?? claude);
+  for(const [rel, content] of Object.entries(files.extra || {})){
+    const p = path.join(TMP, rel);
+    fs.mkdirSync(path.dirname(p), { recursive:true });
+    fs.writeFileSync(p, content);
+  }
+  const env = { ...process.env, CHECK_ROOT:TMP, CHECK_CHANGED_FILES:changedFiles,
+                CHECK_BASE_APP_VERSION:(files.env && files.env.CHECK_BASE_APP_VERSION) || "" };
+  const r = spawnSync(process.execPath, [path.join(__dirname, "check.js")], { env, encoding:"utf8" });
   const out = (r.stdout + r.stderr).trim();
   check(name, (r.status===0)===expectPass && (!expectText || out.includes(expectText)), out.split("\n").slice(0,2).join(" "));
 }
@@ -48,6 +59,37 @@ run("check script + vendored code in one PR fails", f=>f, false, "rules/checks a
 run("workflow + SQL in one PR fails", f=>f, false, "rules/checks and app code change together", ".github/workflows/guard.yml\nsql/002-x.sql");
 run("rules-only PR passes", f=>f, true, "OK", "AGENTS.md\nCLAUDE.md\nopencode.json\ntests/check.js\n.github/workflows/guard.yml");
 run("app + other tests + docs passes", f=>f, true, "OK", "index.html\ntests/sync.test.js\ndocs/brief.md\nids.lock.json");
+
+// APP_VERSION
+const current = html.match(/APP_VERSION\s*=\s*["'](\d+)\.(\d+)\.(\d+)["']/).slice(1).map(Number);
+const baseVersion = current.join(".");
+const bumped = `${current[0]}.${current[1]}.${current[2] + 1}`;
+run("changing index.html without an APP_VERSION bump fails", f=>({ ...f, env:{ CHECK_BASE_APP_VERSION:baseVersion } }), false, "must be bumped above the base", "index.html");
+run("changing index.html with an APP_VERSION bump passes", f=>({ ...f,
+  html:f.html.replace(/APP_VERSION\s*=\s*["'][\d.]+["']/, `APP_VERSION = "${bumped}"`),
+  env:{ CHECK_BASE_APP_VERSION:baseVersion } }), true, "OK", "index.html");
+run("a rules-only PR needs no APP_VERSION bump", f=>({ ...f, env:{ CHECK_BASE_APP_VERSION:baseVersion } }), true, "OK", "AGENTS.md");
+run("a SQL-only PR needs no APP_VERSION bump", f=>({ ...f, env:{ CHECK_BASE_APP_VERSION:baseVersion } }), true, "OK", "sql/002-x.sql");
+run("a manifest-only release without an APP_VERSION bump fails", f=>({ ...f, env:{ CHECK_BASE_APP_VERSION:baseVersion } }), false, "must be bumped above the base", "manifest.webmanifest");
+
+// secrets
+const fakeRole = ["service","role"].join("_");
+const fakeSecret = ["sb","secret",""].join("_") + "AbCdEf1234567890";
+const fakeEnv = ["SUPABASE","SERVICE"].join("_");
+run("a service-role key in a tracked file fails", f=>({ ...f, extra:{ "docs/leak.txt":`k = "${fakeRole}"` } }), false, "service-role key");
+run("a key-shaped Supabase secret key fails", f=>({ ...f, extra:{ "docs/leak.txt":`k = "${fakeSecret}"` } }), false, "Supabase secret key");
+run("a Supabase service-role env var fails", f=>({ ...f, extra:{ "docs/leak.txt":`${fakeEnv}_KEY=x` } }), false, "service-role environment variable");
+run("the vendored SDK's bare secret prefix does not fail", f=>({ ...f, extra:{ "vendor/x.js":["sb","secret",""].join("_") } }), true, "OK");
+
+// destructive SQL
+run("a SQL file that drops a column fails", f=>({ ...f, extra:{ "sql/999-test.sql":"alter table t drop column c;" } }), false, "DROP COLUMN");
+run("a SQL file that renames a column fails", f=>({ ...f, extra:{ "sql/999-test.sql":"alter table t rename column a to b;" } }), false, "RENAME COLUMN");
+run("a normal SQL migration passes", f=>({ ...f, extra:{ "sql/999-test.sql":"alter table t add column if not exists c int;" } }), true, "OK");
+
+// NEVER block duplication
+run("CLAUDE.md NEVER block drifting from AGENTS.md fails", f=>({ ...f,
+  claude:f.claude.replace("Never drop or rename a column.", "Never drop a column.") }), false, "NEVER block differs");
+run("a CLAUDE.md without the NEVER block fails", f=>({ ...f, claude:"pointer only\n" }), false, "no `## NEVER` block");
 
 fs.rmSync(TMP, { recursive:true, force:true });
 finish("check.js self-test");
