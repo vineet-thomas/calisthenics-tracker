@@ -16,7 +16,7 @@ the UI only ever had one weight field per exercise. Nothing was broken; the feat
 | C | Session coaching | **To build — 1.4.0** (same PR as B) |
 | E | Rest timer | **Yes, last**, as its own PR after B + C has settled |
 
-Read `CLAUDE.md` first. It governs everything here (ids, branches, tests, SQL, NEVER block).
+Read `AGENTS.md` first. It governs everything here (ids, branches, tests, SQL, NEVER block).
 
 ---
 
@@ -72,7 +72,7 @@ kettlebell: 3.5, 5.6, 8.1, 10.8, 13.6, 16.1, 18.1
 | `ladder` | `dumbbell` · `kettlebell` · `none` | Which ladder |
 | `implements` | `1` · `2` · `1-2` | How many implements; `1-2` = either, as load demands |
 | `display` | `perHand` · `total` | Wording only |
-| `repMin`, `repMax` | integers | The rep range. **Never parse the `target` display string** — CLAUDE.md permits rewording it |
+| `repMin`, `repMax` | integers | The rep range. **Never parse the `target` display string** — AGENTS.md permits rewording it |
 
 **Achievable loads** = every rung × every allowed implement count, de-duplicated and sorted.
 "Next rung" always means the **next achievable load**, never a computed increment.
@@ -94,7 +94,7 @@ kettlebell: 3.5, 5.6, 8.1, 10.8, 13.6, 16.1, 18.1
 | **none** | `pushups` 12–20 · `dips` 10–15 · `rows` 8–15 · `scapulapull` 8–10 · `core` 8–12 | as listed |
 
 Rep ranges are taken from the v1.2 `target` strings; set them as explicit fields and leave the target and cue
-text untouched (CLAUDE.md rule 10).
+text untouched (AGENTS.md rule 10).
 
 ### Display-name changes (ids do NOT change)
 
@@ -193,7 +193,7 @@ Assistance (`dips`, `rows`) and negatives (`rows`) are not part of the coaching 
 - Single-arm swings → a new id (e.g. `kbswings1a`), never a change to `kbswings`. Different movement, different
   load; charting both on one line would make the history meaningless.
 - Bench press, if it replaces floor press → a new id, never a rename of `floorpress`.
-- New ids are added to `ids.lock.json` deliberately in the same PR (CLAUDE.md rule 1).
+- New ids are added to `ids.lock.json` deliberately in the same PR (AGENTS.md rule 1).
 
 ---
 

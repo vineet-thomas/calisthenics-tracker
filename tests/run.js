@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Runs the test suites (CLAUDE.md: before every PR).
+// Runs the test suites (AGENTS.md: before every PR).
 //   node tests/run.js               check + check self-test + sync + programme (incl. regression vs main)
 //   node tests/run.js --realstack   also the real Postgres + PostgREST suites (needs Homebrew postgresql@16)
 // Env: ALLOW_RENDER_CHANGE=1 when the PR changes the display on purpose (see programme.test.js).

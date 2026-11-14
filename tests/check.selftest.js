@@ -42,10 +42,11 @@ run("upserting a gp_* table across lines fails", f=>({ ...f, html:inject(f.html,
 run("updating a gp_* table fails", f=>({ ...f, html:inject(f.html, 'async function gpW(){ return sb.from(`gp_goals`).update({ done:true }).eq("id",1); }') }), false, "(.update)");
 run("deleting from a gp_* table fails", f=>({ ...f, html:inject(f.html, 'async function gpW(){ return sb.from("gp_goals").delete().eq("id",1); }') }), false, "(.delete)");
 // rules immutability
-run("rules + app code in one PR fails", f=>f, false, "rules/checks and app code change together", "CLAUDE.md\nindex.html");
+run("rules + app code in one PR fails", f=>f, false, "rules/checks and app code change together", "AGENTS.md\nindex.html");
+run("the CLAUDE.md pointer + app code in one PR fails", f=>f, false, "rules/checks and app code change together", "CLAUDE.md\nindex.html");
 run("check script + vendored code in one PR fails", f=>f, false, "rules/checks and app code change together", "tests/check.js,vendor/supabase-js-2.119.0/supabase.js");
 run("workflow + SQL in one PR fails", f=>f, false, "rules/checks and app code change together", ".github/workflows/guard.yml\nsql/002-x.sql");
-run("rules-only PR passes", f=>f, true, "OK", "CLAUDE.md\nopencode.json\ntests/check.js\n.github/workflows/guard.yml");
+run("rules-only PR passes", f=>f, true, "OK", "AGENTS.md\nCLAUDE.md\nopencode.json\ntests/check.js\n.github/workflows/guard.yml");
 run("app + other tests + docs passes", f=>f, true, "OK", "index.html\ntests/sync.test.js\ndocs/brief.md\nids.lock.json");
 
 fs.rmSync(TMP, { recursive:true, force:true });
