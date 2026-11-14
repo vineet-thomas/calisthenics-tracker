@@ -586,7 +586,7 @@ let online = true;
 const SUPABASE_URL = "https://aqbufgwvlrtegoflqrwl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_1vID-paB_RrmUk5XThwS-g_Qs05BLGH";
 const CACHE_KEY = "calisthenics-75hard-cache-v2";
-const APP_VERSION = "1.2.3";
+const APP_VERSION = "1.2.4";
 const DEBUG = new URLSearchParams(location.search).has("debug");
 document.getElementById("appVer").textContent = "v" + APP_VERSION;
 
@@ -1533,17 +1533,30 @@ function updateTabFade(){
   wrap.classList.toggle("at-end", atEnd);
 }
 
+// Supabase returns at most 1,000 rows per request and silently drops the rest (HTTP 200, no error),
+// so history is read in pages. `build` returns a fresh query whose order must be total (no ties),
+// otherwise pages could overlap or skip rows.
+const PAGE_ROWS = 1000;
+async function fetchAllRows(build){
+  const rows = [];
+  for(let from = 0; ; ){
+    const { data, error } = await build().range(from, from + PAGE_ROWS - 1);
+    if(error) throw error;
+    if(!data || !data.length) return rows;
+    rows.push(...data); from += data.length;
+  }
+}
+
 async function fetchHistory(force){
   if(historyCache && !force) return historyCache;
   const byEx = {};
   EX_REGISTRY.forEach(e=> byEx[e.id]=[]);
   if(user && sb){
     try{
-      // pull every set, newest-friendly; aggregate to per-date totals per exercise
-      const { data, error } = await sb.from("workout_log")
+      // pull every set (in pages); aggregate to per-date totals per exercise
+      const data = await fetchAllRows(()=>sb.from("workout_log")
         .select("log_date,exercise_id,set_index,reps,weight_kg,negatives")
-        .order("log_date", { ascending:true });
-      if(error) throw error;
+        .order("log_date", { ascending:true }).order("exercise_id", { ascending:true }).order("set_index", { ascending:true }));
       const agg = {}; // key exId|date -> total
       const wgt = {};  // key exId|date -> weight (from set_index 0)
       const neg = {};  // key exId|date -> negatives reps (from set_index 0)
@@ -1671,11 +1684,9 @@ async function fetchBody(force){
   let rows = [];
   if(user && sb){
     try{
-      const { data, error } = await sb.from("body_comp")
+      rows = await fetchAllRows(()=>sb.from("body_comp")      // one row per date
         .select("log_date,weight_kg,fat_pct,lbm_kg,muscle_kg,visceral")
-        .order("log_date", { ascending:true });
-      if(error) throw error;
-      rows = data || [];
+        .order("log_date", { ascending:true }));
     }catch(e){ captureError("BODY_FETCH", e); }
   }
   bodyCache = rows;
@@ -1811,11 +1822,9 @@ async function fetchNutrition(force){
   let rows=[];
   if(user && sb){
     try{
-      const { data, error } = await sb.from("nutrition")
+      rows=await fetchAllRows(()=>sb.from("nutrition")      // one row per date
         .select("log_date,calories,protein,carbs,fat,screenshot_path")
-        .order("log_date",{ascending:true});
-      if(error) throw error;
-      rows=data||[];
+        .order("log_date",{ascending:true}));
     }catch(e){ captureError("NUT_FETCH", e); }
   }
   nutritionCache=rows; return rows;
@@ -1972,11 +1981,9 @@ async function fetchMeasure(force){
   let rows=[];
   if(user && sb){
     try{
-      const { data, error } = await sb.from("measurements")
+      rows=await fetchAllRows(()=>sb.from("measurements")      // one row per date
         .select("log_date,waist,chest,shoulders,biceps,thigh,hips,neck")
-        .order("log_date",{ascending:true});
-      if(error) throw error;
-      rows=data||[];
+        .order("log_date",{ascending:true}));
     }catch(e){ captureError("MEAS_FETCH", e); }
   }
   measureCache=rows; return rows;

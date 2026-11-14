@@ -17,7 +17,9 @@ node tests/run.js --realstack    # also real Postgres + PostgREST (needs: brew i
 | `sync.test.js` | On-device queue with a fake backend: offline entries, refresh survival, in-flight refresh, refused entries (red badge, retry, discard), server back-off and setting aside, conflicts, Clear day, clock safety, typing merged, storage notice, "Couldn't sync" message. |
 | `programme.test.js` | Display rules for whatever programme `index.html` holds (work lists, run and rest days, colours, 390 px), Progress history, logging every exercise. **Regression:** every day and the Progress view must match `main`'s display code exactly (HTML, styles, pixels). If a PR changes the display on purpose, run with `ALLOW_RENDER_CHANGE=1` and explain the differences in the PR. |
 | `ocr-version.test.js` | The app opens while the OCR CDN hangs and doesn't request it at startup; OCR loads on first use with its integrity hash; CDN down / hanging / read failure show OCR messages (not the sync message) and are logged; version in the footer and the sync panel with the last-sync time; the "Saved ✓" toast hides when idle. |
+| `history.test.js` | Progress, Body, Food and Measurements read every row past Supabase's silent 1,000-row cap (the fake backend applies the same cap), in pages. |
 | `realstack/sql.test.sh` | The SQL in `sql/` on a local Postgres with Supabase-like roles and RLS: behaviour, idempotency, and every rollback (apply, roll back, re-apply). |
+| `realstack/history.test.js` | Progress past the cap through the real client and PostgREST with `db-max-rows = 1000`, as on Supabase. |
 | `realstack/e2e.test.js` | The real app and real supabase-js against local PostgREST: saves through RLS, a losing offline edit ends Synced (HTTP 200), Clear day, a real permission refusal and retry, deload. |
 
 Test-only values: user `11111111-1111-1111-1111-111111111111`, `test@example.com`, and a local JWT secret

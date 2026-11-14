@@ -18,7 +18,7 @@ const FAKE_SUPABASE = `
 window.supabase = { createClient(){
   const user = { id:"u1", email:"test@example.com" };
   function q(table){
-    const st = { table, op:null, body:null, filters:[] };
+    const st = { table, op:null, body:null, filters:[], orders:[] };
     const b = {
       select(){ if(!st.op) st.op="select"; return b; },
       upsert(body, o){ st.op="upsert"; st.body=body; st.conf=o&&o.onConflict; return b; },
@@ -27,7 +27,9 @@ window.supabase = { createClient(){
       eq(k,v){ st.filters.push(["eq",k,v]); return b; },
       in(k,v){ st.filters.push(["in",k,v]); return b; },
       or(s){ st.filters.push(["or",s]); return b; },
-      order(){ return b; }, maybeSingle(){ st.single=true; return b; },
+      order(col, o){ st.orders.push([col, !(o && o.ascending===false)]); return b; },
+      range(from, to){ st.range=[from, to]; return b; },
+      maybeSingle(){ st.single=true; return b; },
       then(ok, ko){
         return fetch("/fake-db", { method:"POST", body:JSON.stringify(st) })
           .then(r=>r.json())
@@ -44,7 +46,7 @@ window.supabase = { createClient(){
 }};`;
 
 function makeServer(seed){
-  const S = { db: seed || {}, offline:false, down:false, delay:0, reject:new Set(), calls:[] };
+  const S = { db: seed || {}, offline:false, down:false, delay:0, reject:new Set(), calls:[], MAX_ROWS:1000 };
   const ts = v=>v ? Date.parse(v) : null;
   const match = (row, filters)=>filters.every(f=>{
     if(f[0]==="eq") return row[f[1]]===f[2];
@@ -69,7 +71,11 @@ function makeServer(seed){
     }
     if(st.op==="insert"){ rows.push({ ...st.body }); return { status:201, data:null, error:null }; }
     if(st.op==="delete"){ S.db[st.table] = rows.filter(r=>!match(r, st.filters)); return { status:204, data:null, error:null }; }
-    const out = rows.filter(r=>match(r, st.filters));
+    // like Supabase: sorted as asked, then the requested range, never more than MAX_ROWS (silently)
+    let out = rows.filter(r=>match(r, st.filters));
+    if(st.orders && st.orders.length) out = out.slice().sort((x,y)=>{ for(const [c,asc] of st.orders){ if(x[c]<y[c]) return asc?-1:1; if(x[c]>y[c]) return asc?1:-1; } return 0; });
+    if(st.range) out = out.slice(st.range[0], st.range[1]+1);
+    out = out.slice(0, S.MAX_ROWS);
     return { status:200, data: st.single ? (out[0]||null) : out, error:null };
   };
   S.rows = ()=>(S.db.workout_log||[]).map(r=>`${r.exercise_id}[${r.set_index}] reps=${r.reps} w=${r.weight_kg}`).sort();
