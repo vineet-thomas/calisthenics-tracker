@@ -31,6 +31,7 @@ db-schemas = "public"
 db-anon-role = "anon"
 jwt-secret = "$SECRET"
 server-port = $API_PORT
+db-max-rows = 1000
 EOF
   # launched directly: macOS strips DYLD_* variables when going through system binaries like nohup
   DYLD_FALLBACK_LIBRARY_PATH="$(brew --prefix postgresql@16)/lib" "$PGRST" "$TMP/pgrst.conf" >"$TMP/pgrst.log" 2>&1 &
