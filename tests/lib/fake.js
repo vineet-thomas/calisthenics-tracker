@@ -45,6 +45,27 @@ window.supabase = { createClient(){
   };
 }};`;
 
+// Column rules mirrored from the live project (owner-confirmed, 13–14 Nov 2026). Keep in step with
+// tests/realstack/schema.sql. Columns not listed are nullable with no default.
+const SCHEMA = {
+  workout_log: {
+    notNull: ["user_id", "log_date", "day", "exercise_id", "set_index", "reps", "updated_at"],
+    defaults: { reps: 0, updated_at: ()=>new Date().toISOString() },     // day and set_index have NO default
+    integer: ["set_index", "reps", "negatives"],                          // set_index smallint, reps integer
+    triggerFills: ["updated_at"],     // sql/001's BEFORE trigger sets a missing/null updated_at before NOT NULL is checked
+  },
+};
+function violates(table, body){
+  const t = SCHEMA[table], row = { ...body };
+  for(const [c, d] of Object.entries(t.defaults)) if(!(c in row)) row[c] = typeof d==="function" ? d() : d;
+  for(const c of t.triggerFills || []) if(row[c]==null) row[c] = new Date().toISOString();
+  for(const c of t.notNull) if(row[c]==null)
+    return { message:`null value in column "${c}" of relation "${table}" violates not-null constraint`, code:"23502", details:null, hint:null };
+  for(const c of t.integer) if(row[c]!=null && !Number.isInteger(+row[c]))
+    return { message:`invalid input syntax for type integer: "${row[c]}"`, code:"22P02", details:null, hint:null };
+  return null;
+}
+
 function makeServer(seed){
   const S = { db: seed || {}, offline:false, down:false, delay:0, reject:new Set(), calls:[], MAX_ROWS:1000 };
   const ts = v=>v ? Date.parse(v) : null;
@@ -57,9 +78,13 @@ function makeServer(seed){
   S.handle = st=>{
     S.calls.push(st);
     if(S.down && st.table!=="error_log") return { status:503, data:null, error:{ message:"Service Unavailable", code:"" } };
-    // workout_log.reps is integer NOT NULL on Supabase: null is refused
-    if(st.op==="upsert" && st.table==="workout_log" && st.body.reps===null)
-      return { status:400, data:null, error:{ message:'null value in column "reps" of relation "workout_log" violates not-null constraint', code:"23502" } };
+    // Supabase's workout_log constraints, enforced like Postgres: on insert/upsert the row that WOULD be inserted
+    // (body + column defaults) is checked before any conflict is resolved, so omitting a no-default NOT NULL
+    // column (day, set_index) is refused even when the row already exists.
+    if((st.op==="upsert" || st.op==="insert") && SCHEMA[st.table]){
+      const bad = violates(st.table, st.body);
+      if(bad) return { status:400, data:null, error:bad };
+    }
     if(st.op==="upsert" && S.reject.has(st.body.exercise_id))
       return { status:403, data:null, error:{ message:'new row violates row-level security policy for table "workout_log"', code:"42501" } };
     const rows = S.db[st.table] = S.db[st.table] || [];
@@ -143,4 +168,4 @@ function reporter(){
   return { check, finish };
 }
 
-module.exports = { FAKE_SUPABASE, makeServer, newPage, sleep, reporter };
+module.exports = { FAKE_SUPABASE, makeServer, newPage, sleep, reporter, SCHEMA, violates };

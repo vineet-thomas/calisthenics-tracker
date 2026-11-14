@@ -11,8 +11,9 @@ create function auth.uid() returns uuid language sql stable as
   $$ select nullif(current_setting('request.jwt.claims', true)::json->>'sub','')::uuid $$;
 grant usage on schema auth to anon, authenticated;
 
-create table public.workout_log(id bigserial primary key, user_id uuid not null, log_date date not null, day text,
-  exercise_id text not null, set_index int not null, reps integer not null default 0, assist text, weight_kg numeric, negatives int,
+-- workout_log columns mirror the live project (owner-confirmed): day and set_index are NOT NULL with NO default.
+create table public.workout_log(id bigserial primary key, user_id uuid not null, log_date date not null, day text not null,
+  exercise_id text not null, set_index smallint not null, reps integer not null default 0, assist text, weight_kg numeric, negatives int,
   updated_at timestamptz not null default now(), unique(user_id,log_date,exercise_id,set_index));
 create table public.day_status(id bigserial primary key, user_id uuid not null, log_date date not null, day text,
   completed boolean, updated_at timestamptz not null default now(), unique(user_id,log_date));

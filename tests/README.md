@@ -21,7 +21,10 @@ node tests/run.js --realstack    # also real Postgres + PostgREST (needs: brew i
 | `sets.test.js` | Per-set weights: inherited from set 1 by value, saved with each set's reps, hand edits kept, offline queueing, refresh; cleared sets: reps = 0 means cleared (workout_log.reps is NOT NULL — null is never sent; never-logged sets have no row); reading rules — sets with reps = 0 invisible, sessions need a set with reps > 0, negatives read from set 1's row regardless; migration of the old single weight. |
 | `realstack/sql.test.sh` | The SQL in `sql/` on a local Postgres with Supabase-like roles and RLS: behaviour, idempotency, and every rollback (apply, roll back, re-apply). |
 | `realstack/history.test.js` | Progress past the cap through the real client and PostgREST with `db-max-rows = 1000`, as on Supabase. |
+| `realstack/parity.test.js` | **Fake ↔ real parity:** the same `workout_log` upserts go to the fake backend and to real PostgREST + Postgres; both must accept or refuse with the same error code (not-null, integer type, defaults, the trigger filling `updated_at`). Catches the fake drifting from the database. |
 | `realstack/e2e.test.js` | The real app and real supabase-js against local PostgREST: saves through RLS, a losing offline edit ends Synced (HTTP 200), Clear day, a real permission refusal and retry, deload. |
+
+The fake backend (`lib/fake.js`) enforces `workout_log`'s live constraints (NOT NULL incl. `day`/`set_index` with no default, `reps` default 0, integer types) — keep it and `realstack/schema.sql` in step with the live project.
 
 Test-only values: user `11111111-1111-1111-1111-111111111111`, `test@example.com`, and a local JWT secret
 that only signs tokens for the throwaway local database. Scratch files go to `tests/.tmp/` (git-ignored).

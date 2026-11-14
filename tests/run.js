@@ -55,6 +55,7 @@ const step = (title, cmd, args, env={})=>new Promise(resolve=>{
       results.push(["realstack SQL", await step("realstack: SQL", "bash", ["realstack/sql.test.sh"])]);
       results.push(["realstack app", await step("realstack: app", process.execPath, ["realstack/e2e.test.js"], env)]);
       results.push(["realstack history", await step("realstack: history", process.execPath, ["realstack/history.test.js"], env)]);
+      results.push(["fake ↔ real parity", await step("realstack: fake ↔ real parity", process.execPath, ["realstack/parity.test.js"], env)]);
     } else results.push(["realstack start", false]);
     await step("realstack: stop", "bash", ["realstack/setup.sh", "stop"]);
   }
