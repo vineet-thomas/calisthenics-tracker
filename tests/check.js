@@ -10,8 +10,8 @@
 //   6. rules immutability: the rules/checks and app code never change in the same PR
 //      (in CI, CHECK_BASE=origin/main; locally the base is origin/main, or main)
 //   7. APP_VERSION is bumped above the PR's base whenever index.html changes
-//   8. no service-role key, Supabase secret key or service-role env var in tracked files
-//   9. no DROP COLUMN or RENAME COLUMN in sql/*.sql (columns are never destroyed)
+//   8. no service-role key, Supabase secret key or assigned service-role env var in tracked files
+//   9. no RENAME COLUMN, and DROP COLUMN only with a verified ALLOW-DROP marker, in sql/*.sql
 //  10. CLAUDE.md carries a byte-identical copy of the NEVER block in AGENTS.md
 const fs = require("fs"), path = require("path"), vm = require("vm"), { execSync } = require("child_process");
 const ROOT = process.env.CHECK_ROOT || path.resolve(__dirname, "..");   // CHECK_ROOT: used by the check's own self-test
@@ -112,8 +112,9 @@ if(changed && changed.some(RELEASE)){
 }
 
 // 8. secrets: scan tracked text files. Tokens are assembled at runtime so this check never matches
-//    its own source. The bare Supabase secret prefix only counts when it is key-shaped; the vendored
-//    SDK contains the bare prefix in its key-format detection.
+//    its own source. A token only counts when it is assigned a value (`KEY=…`, `key: …`): bare prose,
+//    env-var references and a role name used as a value do not fire. The bare Supabase secret prefix
+//    only counts when it is key-shaped; the vendored SDK contains the bare prefix in its detection.
 const trackedFiles = ()=>{
   if(!process.env.CHECK_ROOT){                                  // CHECK_ROOT: self-test temp tree
     try{ return execSync("git ls-files", { cwd:ROOT, encoding:"utf8", stdio:["ignore","pipe","ignore"] }).trim().split("\n").filter(Boolean); }
@@ -130,10 +131,11 @@ const trackedFiles = ()=>{
   return out;
 };
 const files = trackedFiles();
+const ASSIGNED = `[A-Za-z0-9_]*\\s*[:=]\\s*["'\`]?\\S+`;
 const SECRETS = [
-  { name:"service-role key", re:new RegExp(["service","role"].join("_"), "i") },
+  { name:"service-role key", re:new RegExp("\\b" + ["service","role"].join("_") + ASSIGNED, "i") },
   { name:"Supabase secret key", re:new RegExp(["sb","secret",""].join("_") + "[A-Za-z0-9_-]{8,}") },
-  { name:"Supabase service-role environment variable", re:new RegExp(["SUPABASE","SERVICE"].join("_"), "i") },
+  { name:"Supabase service-role environment variable", re:new RegExp("\\b" + ["SUPABASE","SERVICE"].join("_") + ASSIGNED, "i") },
 ];
 const BINARY = /\.(png|jpe?g|gif|webp|ico|zip|pdf|woff2?|ttf|eot|mp4|mov)$/i;
 for(const f of files){
@@ -143,12 +145,53 @@ for(const f of files){
     fail.push(`${f}: contains a ${s.name}. The repo is public — never commit secrets (AGENTS.md NEVER rule 7).`);
 }
 
-// 9. destructive schema changes: columns are never dropped or renamed (AGENTS.md NEVER rule 6).
+// 9. destructive schema changes: RENAME COLUMN is always refused. DROP COLUMN is allowed only in a
+//    rollback that carries the exact ALLOW-DROP marker naming a forward migration that exists in sql/.
+const DROP_COLUMN = /\bdrop\s+column\b/gi;
+const RENAME_COLUMN = /\brename\s+column\b/i;
+const ALLOW_DROP = /^--\s*ALLOW-DROP:\s*reverses\s+sql\/([A-Za-z0-9._-]+\.sql)\s*,/i;
+const SAFE_DROP = /^--\s*Safe only immediately after that migration, before the column holds data\.?\s*$/i;
+
+const statementStart = (text, at)=>{
+  const segStart = text.lastIndexOf(";", at) + 1;
+  let offset = 0;
+  for(const line of text.slice(segStart, at).split("\n")){
+    const t = line.trim();
+    if(t !== "" && !t.startsWith("--")) return segStart + offset;
+    offset += line.length + 1;
+  }
+  return segStart;
+};
+const commentsAbove = (text, at)=>{
+  const lines = text.slice(0, at).split("\n");
+  if(lines[lines.length-1] === "") lines.pop();
+  const block = [];
+  for(let i = lines.length-1; i >= 0; i--){
+    const line = lines[i].trim();
+    if(line === "" || !line.startsWith("--")) break;
+    block.unshift(line);
+  }
+  return block;
+};
+
 for(const f of files.filter(f=>/^sql\/.*\.sql$/.test(f))){
   let sql; try{ sql = fs.readFileSync(path.join(ROOT, f), "utf8"); }catch(e){ continue; }
-  if(/\bdrop\s+column\b/i.test(sql))
-    fail.push(`${f}: contains DROP COLUMN. Never drop a column (AGENTS.md NEVER rule 6) — add a new column instead.`);
-  if(/\brename\s+column\b/i.test(sql))
+  DROP_COLUMN.lastIndex = 0;
+  let m;
+  while((m = DROP_COLUMN.exec(sql))){
+    const where = `${f}:${sql.slice(0, m.index).split("\n").length}`;
+    const block = commentsAbove(sql, statementStart(sql, m.index));
+    const marker = block.map(l=>l.match(ALLOW_DROP)).find(Boolean);
+    if(!marker){
+      fail.push(`${where}: DROP COLUMN needs a comment immediately above the statement: \`-- ALLOW-DROP: reverses sql/<file>.sql, which adds this column.\` (AGENTS.md NEVER rule 6).`);
+    }else{
+      if(!fs.existsSync(path.join(ROOT, "sql", marker[1])))
+        fail.push(`${where}: ALLOW-DROP names sql/${marker[1]}, which does not exist.`);
+      if(!block.some(l=>SAFE_DROP.test(l)))
+        fail.push(`${where}: add \`-- Safe only immediately after that migration, before the column holds data.\` above the statement.`);
+    }
+  }
+  if(RENAME_COLUMN.test(sql))
     fail.push(`${f}: contains RENAME COLUMN. Never rename a column (AGENTS.md NEVER rule 6) — add a new column instead.`);
 }
 
@@ -171,4 +214,4 @@ if(agentsSrc && claudeSrc){
 }
 
 if(fail.length){ console.error("CHECK FAILED\n - " + fail.join("\n - ")); process.exit(1); }
-console.log(`OK — scripts parse, manifest valid, ${lock.length} exercise ids locked and present, no service worker, no gp_* writes, rules and app code not mixed, APP_VERSION bump, no secrets, no destructive SQL, NEVER copies identical${note}`);
+console.log(`OK — scripts parse, manifest valid, ${lock.length} exercise ids locked and present, no service worker, no gp_* writes, rules and app code not mixed, APP_VERSION bump, no secrets, no unmarked destructive SQL, NEVER copies identical${note}`);

@@ -76,19 +76,43 @@ run("a manifest-only release without an APP_VERSION bump fails", f=>({ ...f, env
 const fakeRole = ["service","role"].join("_");
 const fakeSecret = ["sb","secret",""].join("_") + "AbCdEf1234567890";
 const fakeEnv = ["SUPABASE","SERVICE"].join("_");
-run("a service-role key in a tracked file fails", f=>({ ...f, extra:{ "docs/leak.txt":`k = "${fakeRole}"` } }), false, "service-role key");
+const fakeJwt = "eyJ" + "hbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0" + ".sflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
+run("an assigned service-role key fails", f=>({ ...f, extra:{ "docs/leak.txt":`${fakeRole}: "${fakeJwt}"` } }), false, "service-role key");
 run("a key-shaped Supabase secret key fails", f=>({ ...f, extra:{ "docs/leak.txt":`k = "${fakeSecret}"` } }), false, "Supabase secret key");
-run("a Supabase service-role env var fails", f=>({ ...f, extra:{ "docs/leak.txt":`${fakeEnv}_KEY=x` } }), false, "service-role environment variable");
+run("an assigned Supabase service-role env var fails", f=>({ ...f, extra:{ "docs/leak.txt":`${fakeEnv}_ROLE_KEY=${fakeJwt}` } }), false, "service-role environment variable");
+run("prose mentioning the tokens does not fail", f=>({ ...f, extra:{ "docs/notes.md":`Never commit a ${fakeRole} key or a ${fakeEnv} value; see process.env.${fakeEnv}_ROLE_KEY.` } }), true, "OK");
 run("the vendored SDK's bare secret prefix does not fail", f=>({ ...f, extra:{ "vendor/x.js":["sb","secret",""].join("_") } }), true, "OK");
 
 // destructive SQL
-run("a SQL file that drops a column fails", f=>({ ...f, extra:{ "sql/999-test.sql":"alter table t drop column c;" } }), false, "DROP COLUMN");
-run("a SQL file that renames a column fails", f=>({ ...f, extra:{ "sql/999-test.sql":"alter table t rename column a to b;" } }), false, "RENAME COLUMN");
+const markedDrop = [
+  "-- ALLOW-DROP: reverses sql/003-add-foo.sql, which adds this column.",
+  "-- Safe only immediately after that migration, before the column holds data.",
+  "alter table t drop column foo;"
+].join("\n");
+run("a DROP COLUMN without the ALLOW-DROP marker fails", f=>({ ...f, extra:{ "sql/003-add-foo-rollback.sql":"alter table t drop column foo;" } }), false, "ALLOW-DROP");
+run("a marked rollback reversing an existing migration passes", f=>({ ...f, extra:{
+  "sql/003-add-foo.sql":"alter table t add column foo int;",
+  "sql/003-add-foo-rollback.sql":markedDrop } }), true, "OK");
+run("a marker naming a missing migration fails", f=>({ ...f, extra:{
+  "sql/003-add-foo-rollback.sql":markedDrop.replace("sql/003-add-foo.sql", "sql/999-missing.sql") } }), false, "which does not exist");
+run("a marked DROP COLUMN without the safe-only line fails", f=>({ ...f, extra:{
+  "sql/003-add-foo.sql":"alter table t add column foo int;",
+  "sql/003-add-foo-rollback.sql":[
+    "-- ALLOW-DROP: reverses sql/003-add-foo.sql, which adds this column.",
+    "alter table t drop column foo;"
+  ].join("\n") } }), false, "Safe only immediately after");
+run("a RENAME COLUMN fails even with a marker", f=>({ ...f, extra:{
+  "sql/003-add-foo.sql":"alter table t add column foo int;",
+  "sql/003-add-foo-rollback.sql":[
+    "-- ALLOW-DROP: reverses sql/003-add-foo.sql, which adds this column.",
+    "-- Safe only immediately after that migration, before the column holds data.",
+    "alter table t rename column foo to bar;"
+  ].join("\n") } }), false, "RENAME COLUMN");
 run("a normal SQL migration passes", f=>({ ...f, extra:{ "sql/999-test.sql":"alter table t add column if not exists c int;" } }), true, "OK");
 
 // NEVER block duplication
 run("CLAUDE.md NEVER block drifting from AGENTS.md fails", f=>({ ...f,
-  claude:f.claude.replace("Never drop or rename a column.", "Never drop a column.") }), false, "NEVER block differs");
+  claude:f.claude.replace("These are irreversible or unrecoverable.", "These are irreversible.") }), false, "NEVER block differs");
 run("a CLAUDE.md without the NEVER block fails", f=>({ ...f, claude:"pointer only\n" }), false, "no `## NEVER` block");
 
 fs.rmSync(TMP, { recursive:true, force:true });

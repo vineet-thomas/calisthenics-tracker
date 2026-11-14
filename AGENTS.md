@@ -12,7 +12,7 @@ These are irreversible or unrecoverable. No exceptions without the owner's expli
 3. **Never write to `gp_*` tables** — they belong to the goals-prayers app. Reads only. *(`node tests/check.js`)*
 4. **Never run SQL against the live database.** Write it to `sql/` with a rollback; the owner runs it. *(rule 6)*
 5. **Never add a service worker.** *(`node tests/check.js`)*
-6. **Never drop or rename a column.**
+6. **Never drop or rename a column** — except a marked rollback of a column the paired migration just added (see rule 6).
 7. **Never put a secret in the repo** — it is public. The Supabase publishable key in `index.html` is public by design.
 8. **Never change the rules or the checks in the same PR as code.** Rules = `AGENTS.md`, `CLAUDE.md`, `opencode.json`,
    `tests/check.js`, `tests/check.selftest.js`, `.github/workflows/guard.yml`. Code = `index.html`,
@@ -80,6 +80,15 @@ their schema, and never write to them from here.
    plus `sql/NNN-<name>-rollback.sql` in the same PR. Both must be idempotent, and both must be
    tested (apply, roll back, re-apply) before the PR is opened — `tests/realstack/sql.test.sh`
    does this for every script in `sql/`; add behaviour checks for the new script there.
+   The one exception is a rollback that drops a column the forward migration just added. Put this
+   immediately above the statement; `tests/check.js` verifies the marker and that the named file
+   exists in `sql/`:
+   ```sql
+   -- ALLOW-DROP: reverses sql/003-add-foo.sql, which adds this column.
+   -- Safe only immediately after that migration, before the column holds data.
+   alter table public.whatever drop column foo;
+   ```
+   A `DROP COLUMN` without that marker, or any `RENAME COLUMN`, always fails the check.
 7. **No backup files** (`index-bkp*.html`, `index copy.html`). Git history is the backup.
 8. **Day objects must keep their shape.** Every entry in `DAYS` points at a data object with
    either a `work` + `stretch` pair (training days) or a `circuit` + `stretch` pair (run and

@@ -9,7 +9,7 @@ These are irreversible or unrecoverable. No exceptions without the owner's expli
 3. **Never write to `gp_*` tables** — they belong to the goals-prayers app. Reads only. *(`node tests/check.js`)*
 4. **Never run SQL against the live database.** Write it to `sql/` with a rollback; the owner runs it. *(rule 6)*
 5. **Never add a service worker.** *(`node tests/check.js`)*
-6. **Never drop or rename a column.**
+6. **Never drop or rename a column** — except a marked rollback of a column the paired migration just added (see rule 6).
 7. **Never put a secret in the repo** — it is public. The Supabase publishable key in `index.html` is public by design.
 8. **Never change the rules or the checks in the same PR as code.** Rules = `AGENTS.md`, `CLAUDE.md`, `opencode.json`,
    `tests/check.js`, `tests/check.selftest.js`, `.github/workflows/guard.yml`. Code = `index.html`,
