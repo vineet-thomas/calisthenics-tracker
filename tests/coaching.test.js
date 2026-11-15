@@ -161,6 +161,13 @@ const reps = (ex,i)=>`.stepper input[data-ex="${ex}"][data-set="${i}"]`;
     /go up a rung when all 3 sets hit the top of the range twice running/i.test(cues.find(c=>c.id==="squats").cue),
     [cues.find(c=>c.id==="ohpress").cue, cues.find(c=>c.id==="squats").cue].join(" | "));
 
+  const pu = await page0.evaluate(()=>{ let w=null; DAYS.forEach(d=>((d.data||{}).work||[]).forEach(x=>{ if(x.id==="pushups") w=x; }));
+    const r = EX_REGISTRY.find(e=>e.id==="pushups"); return { cue:w.cue, target:w.target, name:w.name, min:r.repMin, max:r.repMax }; });
+  check("C22 push-ups cue gains the even-sets sentence, the rest of the cue and the 12–20 range are untouched",
+    pu.cue.startsWith("Stop 1–2 reps before failure. Full range, elbows ~45°. When 3×20 is clean, add a weighted backpack or move to deficit / archer push-ups.")
+    && pu.cue.endsWith(" Even sets — pick a number you can repeat for all three, roughly 80% of your single-set max. Don't empty the tank on set 1.")
+    && pu.target==="3 sets · 12–20 reps" && pu.name==="Push-ups" && pu.min===12 && pu.max===20, pu.cue);
+
   // ---- the advance line is per exercise, not one flat 45 ----
   const th = await page0.evaluate(()=>({
     vals:["pushups","dips","scapulapull","ohpress","squats"].map(id=>[id, ADVANCE_TOTAL(EX_REGISTRY.find(e=>e.id===id))]),
