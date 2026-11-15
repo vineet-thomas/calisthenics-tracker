@@ -25,6 +25,12 @@ Read `AGENTS.md` first. It governs everything here (ids, branches, tests, SQL, N
 - Each set of a loaded exercise has its own weight box. Set 1's weight is **inherited by value**: when set 1
   changes from A to B, sets still holding A follow; a set changed by hand keeps its value; a set typed equal
   to set 1 follows it. A set's weight is **saved together with that set's reps** — a set never done has no row.
+  If reps are logged before any weight is typed (e.g. all three sets, then set 1's weight), **set 1's weight is
+  repeated on those sets and saved with them** (1.3.3) — each keeps its own copy, so a later hand edit to set 2
+  stays put. A set with no reps is never given a weight.
+- The weight box shows the inherited weight as a **placeholder only, and only while the day is open** (no
+  `day_status` row, or `completed = false`); on a completed day an unlogged set shows nothing, and a set with
+  reps always shows the weight stored for it (1.3.2).
 - `workout_log.reps` is **`integer NOT NULL DEFAULT 0`**. **`reps = 0` means cleared. Never send null** —
   Supabase refuses it (23502). A never-logged set is never written.
 - `day` (text) and `set_index` (smallint) are **NOT NULL with no default**; every write must include them.
