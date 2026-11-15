@@ -109,7 +109,7 @@ const reps = (ex,i)=>`.stepper input[data-ex="${ex}"][data-set="${i}"]`;
   check("C10 …naming only the sets that missed the range (13 / 10 / 10 is not \"under 12\")",
     c.why==="Sets 2 and 3 did 10 — the target is 12–20.", c.why);
   c = await g("dips", []);
-  check("C10 bodyweight with no history → the range only", /No session yet — work in the 10–15 rep range/.test(c.text) && c.weight===null, c.text);
+  check("C10 bodyweight with no history → the range only", /No session yet — work in the 6–12 rep range/.test(c.text) && c.weight===null, c.text);
 
   // squats: bodyweight rows from before 11 Nov must never be compared with loaded work
   c = await g("squats", [S(weekAgo(2), [12,12,12], null), S(weekAgo(1), [12,12,12], null)]);
@@ -166,8 +166,8 @@ const reps = (ex,i)=>`.stepper input[data-ex="${ex}"][data-set="${i}"]`;
     vals:["pushups","dips","scapulapull","ohpress","squats"].map(id=>[id, ADVANCE_TOTAL(EX_REGISTRY.find(e=>e.id===id))]),
     kb:ADVANCE_TOTAL(EX_REGISTRY.find(e=>e.id==="kbswings")),
   }));
-  check("C23 the advance line is 3 × that exercise's repMax (push-ups 60, dips 45, scapula pull-ups 30)",
-    JSON.stringify(th.vals)===JSON.stringify([["pushups",60],["dips",45],["scapulapull",30],["ohpress",30],["squats",36]]),
+  check("C23 the advance line is 3 × that exercise's repMax (push-ups 60, dips 36, scapula pull-ups 30)",
+    JSON.stringify(th.vals)===JSON.stringify([["pushups",60],["dips",36],["scapulapull",30],["ohpress",30],["squats",36]]),
     JSON.stringify(th.vals));
   check("C23 …so a range that tops out below 15 reps is not permanently 'not ready' (overhead press 30)",
     th.vals.find(v=>v[0]==="ohpress")[1]===30 && th.kb===0, JSON.stringify(th));
@@ -179,8 +179,8 @@ const reps = (ex,i)=>`.stepper input[data-ex="${ex}"][data-set="${i}"]`;
       ...rows(weekAgo(1), "ohpress", [10,10,10], 10.5),
       ...rows(weekAgo(2), "pushups", [20,20,20], null),
       ...rows(weekAgo(1), "pushups", [20,20,20], null),
-      ...rows(weekAgo(2), "dips", [12,12,12], null),
-      ...rows(weekAgo(1), "dips", [12,12,12], null),
+      ...rows(weekAgo(2), "dips", [9,9,9], null),
+      ...rows(weekAgo(1), "dips", [9,9,9], null),
       ...rows(weekAgo(2), "scapulapull", [10,10,10], null, "Fri"),
       ...rows(weekAgo(1), "scapulapull", [10,10,10], null, "Fri"),
       ...rows(weekAgo(1), "splitsquat", [10,10,10], [10.5,8,8]),
@@ -241,8 +241,8 @@ const reps = (ex,i)=>`.stepper input[data-ex="${ex}"][data-set="${i}"]`;
     const tagOn = id=>page.locator(`[data-adv="${id}"]`).evaluate(e=>e.classList.contains("show"));
     check("C18 'Ready to advance' shows at load for a confirmed exercise, next to the sentence that says why",
       await tagOn("pushups") && /^Ready for the next progression/.test(mon.pushToday), mon.pushToday);
-    check("C18 …and not for one whose sets are short of the top (dips 12, repMax 15)",
-      !(await tagOn("dips")) && /^Aim for 15/.test(await page.locator('[data-today="dips"]').textContent()));
+    check("C18 …and not for one whose sets are short of the top (dips 9, repMax 12)",
+      !(await tagOn("dips")) && /^Aim for 12/.test(await page.locator('[data-today="dips"]').textContent()));
     await page.tab(4);
     check("C18 …the threshold is the exercise's own range: scapula pull-ups confirm at 10 (a flat 15 never could)",
       await tagOn("scapulapull"));
@@ -313,6 +313,58 @@ const reps = (ex,i)=>`.stepper input[data-ex="${ex}"][data-set="${i}"]`;
       edit.cloudWins==="10/10/10" && edit.afterEdit==="12/12/12", `${edit.cloudWins} → ${edit.afterEdit}`);
     await done(page); }
 
+  // ---- assisted-first dips and pull-ups (ids unchanged): the programme, and negatives on a second exercise ----
+  { const old = rows(weekAgo(1), "dips", [7,7,7], null); old[0].negatives = 3;       // an old eccentric-only session
+    const S6 = makeServer({ workout_log:old, day_status:[] }); const page = await newPage(browser, BASE, S6);
+    await sleep(500);
+    const prog = await page.evaluate(()=>{
+      const reg = id=>EX_REGISTRY.find(e=>e.id===id);
+      const work = id=>{ let w=null; DAYS.forEach(d=>((d.data||{}).work||[]).forEach(x=>{ if(x.id===id) w=x; })); return w; };
+      return { dips:{ reg:reg("dips"), work:work("dips") }, rows:{ reg:reg("rows"), work:work("rows") } };
+    });
+    const D = prog.dips, R = prog.rows;
+    check("D1 dips: 'Triceps dips', 3 sets · 6–12 reps, repMin 6 / repMax 12, negatives on, same id",
+      D.work.id==="dips" && D.work.name==="Triceps dips" && D.work.target==="3 sets · 6–12 reps" && D.work.negatives===true
+      && D.reg.name==="Triceps dips" && D.reg.repMin===6 && D.reg.repMax===12, JSON.stringify([D.work.name, D.work.target, D.reg.repMin, D.reg.repMax]));
+    check("D1 …and the cue is the new one: band, negatives last, reduce the band at 3×12",
+      /^Band looped across the dip handles/.test(D.work.cue) && /Negatives last, after the working sets\./.test(D.work.cue) && /Reduce the band when 3×12 is clean\.$/.test(D.work.cue), D.work.cue);
+    check("D2 pull-ups: 'Pull-ups (assisted)', 3 sets · 6–12 reps, repMin 6 / repMax 12, same id, still has negatives",
+      R.work.id==="rows" && R.work.name==="Pull-ups (assisted)" && R.work.target==="3 sets · 6–12 reps" && R.work.negatives===true
+      && R.reg.name==="Pull-ups (assisted)" && R.reg.repMin===6 && R.reg.repMax===12, JSON.stringify([R.work.name, R.work.target, R.reg.repMin, R.reg.repMax]));
+    check("D2 …and the cue is the new one: even sets, negatives last and unassisted, drop a band at 3×12",
+      /^Bands on\./.test(R.work.cue) && /Negatives last, unassisted, after these\./.test(R.work.cue) && /Drop a band when 3×12 is clean\.$/.test(R.work.cue), R.work.cue);
+
+    // the known one-off: 7 / 7 / 7 were negatives, but are read as assisted reps — kept on purpose, no data change
+    const dipsToday = await page.locator('[data-today="dips"]').textContent();
+    check("D3 the old dips history is read as assisted reps for one session (7 / 7 / 7 → aim for 12)",
+      /^Aim for 12 on every set/.test(dipsToday) && /You did 7 \/ 7 \/ 7 last time\./.test(dipsToday), dipsToday);
+
+    // negatives on dips: the input exists, saves to set 1's row, and plots on the negatives chart
+    const hasInput = await page.locator('.neginput[data-ex="dips"]').count();
+    await page.fill('.neginput[data-ex="dips"]', "4"); await sleep(1500);
+    const saved = S6.db.workout_log.filter(r=>r.exercise_id==="dips" && r.log_date===MON);
+    check("D4 dips gets its own negatives input, and the value is saved on set 1's row (set_index 0)",
+      hasInput===1 && saved.length===1 && saved[0].set_index===0 && saved[0].negatives===4 && (await page.locator("#syncBadge").textContent())==="Synced",
+      JSON.stringify(saved.map(r=>[r.set_index, r.reps, r.negatives])));
+    const h = await page.evaluate(async()=>{ const x = await fetchHistory(true); return { neg:x.negatives.dips, sess:x.sessions.dips }; });
+    check("D4 …it is read back on the negatives series (3 on the old date, 4 today) without becoming a session",
+      h.neg.map(n=>n.negatives).join(",")==="3,4" && h.sess.length===1 && h.sess[0].total===21, JSON.stringify(h));
+    await page.click("#tabProgress"); await sleep(900);
+    const card = await page.evaluate(()=>{ const c=[...document.querySelectorAll("#progressView .chartcard")].find(x=>x.querySelector(".nm").textContent.startsWith("Triceps dips"));
+      return { text:c.innerText.replace(/\n+/g," | "), charts:c.querySelectorAll("svg").length }; });
+    check("D4 …and the negatives chart now draws for a second exercise: Triceps dips shows two charts (reps + negatives)",
+      /Negatives/.test(card.text) && card.charts===2 && /advance \(36\)/.test(await page.evaluate(()=>[...document.querySelectorAll("#progressView .chartcard")].find(x=>x.querySelector(".nm").textContent.startsWith("Triceps dips")).innerHTML)), card.text.slice(0,160));
+
+    // the negatives block used to say "Do these FIRST … full dead hang" for every exercise
+    await page.click("#tabTrain"); await sleep(300);
+    const dipsHint = await page.evaluate(()=>document.querySelector('.card[data-exid="dips"] .neginput').closest(".assistrow").innerText);
+    await page.tab(4);
+    const rowsHint = await page.evaluate(()=>document.querySelector('.card[data-exid="rows"] .neginput').closest(".assistrow").innerText);
+    check("D5 the negatives text matches 'negatives last' and is right for each movement (no 'FIRST', no dead hang on dips)",
+      !/FIRST|dead hang/i.test(dipsHint) && /After the working sets/.test(dipsHint) && !/FIRST/.test(rowsHint) && /After the working sets, unassisted from a full dead hang/.test(rowsHint),
+      dipsHint.replace(/\n+/g," | ") + " // " + rowsHint.replace(/\n+/g," | "));
+    await done(page); }
+
   // ---- Progress: the ready badge follows the same repMax rule ----
   { const S3 = makeServer(seed); const page = await newPage(browser, BASE, S3);
     await page.click("#tabProgress"); await sleep(900);
@@ -326,7 +378,7 @@ const reps = (ex,i)=>`.stepper input[data-ex="${ex}"][data-set="${i}"]`;
                labelPush:label("pushups"), labelScap:label("scapulapull"),
                head:document.querySelector("#progressView .pg-head p").textContent };
     });
-    check("C21 Progress marks push-ups ready (20 reps twice) but not dips (12 reps, under 15)", pg.pushups===true && pg.dips===false && pg.charts>0, JSON.stringify(pg));
+    check("C21 Progress marks push-ups ready (20 reps twice) but not dips (9 reps, under 12)", pg.pushups===true && pg.dips===false && pg.charts>0, JSON.stringify(pg));
     check("C21 …scapula pull-ups are ready at their own top (10), and the line says so", pg.scap===true && pg.labelScap==="advance (30)", `${pg.scap} · ${pg.labelScap}`);
     check("C21 the dashed line is per exercise (push-ups 60), and the heading no longer claims a flat 45",
       pg.labelPush==="advance (60)" && /3 × its top rep count/.test(pg.head) && !/45/.test(pg.head), `${pg.labelPush} · ${pg.head}`);

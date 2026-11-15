@@ -385,7 +385,7 @@ const WARMUP = [
 const PUSH = {
   work:[
     {id:"pushups",name:"Push-ups",target:"3 sets · 12–20 reps",cue:"Stop 1–2 reps before failure. Full range, elbows ~45°. When 3×20 is clean, add a weighted backpack or move to deficit / archer push-ups."},
-    {id:"dips",name:"Box / triceps dips",target:"3 sets · 10–15 reps",cue:"Shoulders down, controlled descent. When 3×15 is clean, add weight in a backpack.",assist:true},
+    {id:"dips",name:"Triceps dips",target:"3 sets · 6–12 reps",cue:"Band looped across the dip handles, knees in it — enough assistance to press out of the bottom on every rep. Full depth, shoulders down, elbows back. Negatives last, after the working sets. Reduce the band when 3×12 is clean.",assist:true,negatives:true,negHint:"After the working sets, banded or unassisted — lower as slowly as you can, shoulders down."},
     {id:"ohpress",name:"DB Overhead Press",target:"3 sets · 6–10 reps",cue:"Press straight overhead, avoid arching lower back. Go up a rung when all 3 sets hit the top of the range twice running.",loaded:true},
     {id:"floorpress",name:"DB Floor Press",target:"3 sets · 8–12 reps",cue:"Lie on floor/mat, press up, elbows stop just short of touching down.",loaded:true},
     {id:"latraise",name:"Lateral Raise",target:"3 sets · 12–20 reps",cue:"Light, slow, lead with the elbows, stop at shoulder height. Shoulder width is most of what makes a lean frame read as muscular.",loaded:true},
@@ -415,7 +415,7 @@ const LEGS = {
 };
 const PULL = {
   work:[
-    {id:"rows",name:"Rows / chin-ups",target:"3 sets · 8–15 reps",cue:"Full dead hang at the bottom every rep, lead with elbows. Negatives first while fresh, then this as assisted volume. When 3×15 is clean, reduce the assistance.",assist:true,negatives:true},
+    {id:"rows",name:"Pull-ups (assisted)",target:"3 sets · 6–12 reps",cue:"Bands on. Full dead hang every rep, lead with the elbows. Even sets — stop 2 short of failure so set 3 looks like set 1. Negatives last, unassisted, after these. Drop a band when 3×12 is clean.",assist:true,negatives:true,negHint:"After the working sets, unassisted from a full dead hang — lower as slowly as you can. This is the single biggest lever for closing the pull-up gap."},
     {id:"scapulapull",name:"Scapula pull-ups",target:"3 sets · 8–10 reps",cue:"Dead hang, scapulae elevated to ears, pull scapulae down WITHOUT bending elbows. Builds the initiation strength most people miss on their first real pull-up."},
     {id:"dbrows",name:"DB Rows",target:"3 sets · 8–12 per side",cue:"Flat back, pull elbow past hip, squeeze at top.",loaded:true},
     {id:"reardelt",name:"Rear Delt Fly",target:"3 sets · 15–20 reps",cue:"Hinged at the hips, light DBs, lead with the elbows. Balances all the pressing and keeps the shoulders healthy.",loaded:true},
@@ -535,11 +535,11 @@ const LADDERS = {
 //  display     perHand | total — wording only
 const EX_REGISTRY = [
   { id:"pushups",    name:"Push-ups",              color:"#4f8ff0", ladder:"none", repMin:12, repMax:20 },
-  { id:"dips",       name:"Box / triceps dips",    color:"#4f8ff0", ladder:"none", repMin:10, repMax:15 },
+  { id:"dips",       name:"Triceps dips",          color:"#4f8ff0", ladder:"none", repMin:6, repMax:12 },
   { id:"ohpress",    name:"DB Overhead Press",     color:"#4f8ff0", loaded:true, ladder:"dumbbell", implements:2,     display:"perHand", repMin:6,  repMax:10 },
   { id:"floorpress", name:"DB Floor Press",        color:"#4f8ff0", loaded:true, ladder:"dumbbell", implements:2,     display:"perHand", repMin:8,  repMax:12 },
   { id:"latraise",   name:"Lateral Raise",         color:"#4f8ff0", loaded:true, ladder:"dumbbell", implements:2,     display:"perHand", repMin:12, repMax:20 },
-  { id:"rows",       name:"Rows / chin-ups",       color:"#5ec27e", ladder:"none", repMin:8, repMax:15 },
+  { id:"rows",       name:"Pull-ups (assisted)",   color:"#5ec27e", ladder:"none", repMin:6, repMax:12 },
   { id:"scapulapull",name:"Scapula pull-ups",      color:"#5ec27e", ladder:"none", repMin:8, repMax:10 },
   { id:"dbrows",     name:"DB Rows",               color:"#5ec27e", loaded:true, ladder:"dumbbell", implements:2,     display:"perHand", repMin:8,  repMax:12 },
   { id:"reardelt",   name:"Rear Delt Fly",         color:"#5ec27e", loaded:true, ladder:"dumbbell", implements:2,     display:"perHand", repMin:15, repMax:20 },
@@ -616,7 +616,7 @@ let online = true;
 const SUPABASE_URL = "https://aqbufgwvlrtegoflqrwl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_1vID-paB_RrmUk5XThwS-g_Qs05BLGH";
 const CACHE_KEY = "calisthenics-75hard-cache-v2";
-const APP_VERSION = "1.4.1";
+const APP_VERSION = "1.4.2";
 const DEBUG = new URLSearchParams(location.search).has("debug");
 document.getElementById("appVer").textContent = "v" + APP_VERSION;
 
@@ -1184,11 +1184,11 @@ function exerciseCard(dateISO,ex,coachData){
   const negVal = (state[dateISO] && state[dateISO][ex.id+"_neg"]) || "";
   const negRow = ex.negatives ? `
     <div class="assistrow" style="border-top:none;padding-top:0;margin-top:12px">
-      <label>Negatives — clean reps (4–6s lower, full dead hang)
+      <label>Negatives — clean reps (4–6s lower)
         <input type="number" step="1" min="0" inputmode="numeric" class="neginput" data-ex="${ex.id}" value="${negVal}"
                placeholder="e.g. 4">
       </label>
-      <div class="assisthint">Do these FIRST, while fresh — box/band up to the top, lower as slowly as you can. This is the single biggest lever for closing the pull-up gap.</div>
+      <div class="assisthint">${ex.negHint || "After the working sets — lower as slowly as you can."}</div>
     </div>` : "";
   const weightRow = ex.loaded ? `
     <div class="assisthint">Increase when all 3 sets hit the top of the rep range with clean form for 2 sessions running.</div>` : "";
@@ -1952,7 +1952,7 @@ async function renderProgress(){
     }
     // negatives: their own series from set 1's row, so a date with negatives but no logged sets still shows
     if(negs.length){
-      html += `<div class="sub" style="margin-top:12px">Negatives — clean reps per session (full dead-hang lower)</div>`;
+      html += `<div class="sub" style="margin-top:12px">Negatives — clean reps per session (slow lowering)</div>`;
       html += metricChartSVG(negs.map(p=>({ log_date:p.date, n:p.negatives })), "n", "#f0c14f", null);
     }
     html += `</div>`;

@@ -204,7 +204,7 @@ const status = completed=>({ user_id:"u1", log_date:monISO(), day:"Mon", complet
     check("R2 negatives are read from set 1's row regardless: 5 Oct and 12 Oct both on the series", h.neg.map(n=>n.date+":"+n.negatives).join(",")==="2026-10-05:4,2026-10-12:5", JSON.stringify(h.neg));
     check("R3 working weight is set 1's (10.5), not a later set's (8)", h.oh.length===1 && h.oh[0].weight===10.5, JSON.stringify(h.oh));
     await page.click("#tabProgress"); await sleep(800);
-    const card = await page.evaluate(()=>{ const c=[...document.querySelectorAll("#progressView .chartcard")].find(x=>x.querySelector(".nm").textContent.startsWith("Rows")); return { text:c.innerText, charts:c.querySelectorAll("svg").length }; });
+    const card = await page.evaluate(()=>{ const c=[...document.querySelectorAll("#progressView .chartcard")].find(x=>x.querySelector(".nm").textContent.startsWith("Pull-ups (assisted)")); return { text:c.innerText, charts:c.querySelectorAll("svg").length }; });
     check("R2 the negatives chart is shown in Progress (it never rendered before 1.3.0)", /1 session/.test(card.text) && /Negatives/.test(card.text) && card.charts===2, card.text.replace(/\n+/g," | ").slice(0,140));
     await done(page); }
 

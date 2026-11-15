@@ -47,6 +47,21 @@ the UI only ever had one weight field per exercise. Nothing was broken; the feat
   copy only fills dates the cloud doesn't have. An edit made here still shows at once, because `pushSet` /
   `pushSetWeight` drop that date from the cached history (`forgetCoachDate`).
 
+### Shipped in 1.4.2 — assisted-first dips and pull-ups (owner-requested programme change)
+
+Both movements had been static for three months (dips 7/7/7 from eccentric-only work; pull-ups collapsing 5/3/2
+from unassisted negatives *before* the assisted sets), so the structure changed: **assisted full reps first,
+negatives last.** Ids are unchanged — the same movement under different loading, like squats going loaded.
+
+- `dips`: "Box / triceps dips" → **"Triceps dips"**, 3 sets · **6–12** reps (`repMin` 6, `repMax` 12), new cue,
+  and `negatives:true` — it now has its own negatives input, saved on set 1's row like `rows`.
+- `rows`: target **6–12** (`repMin` 6, `repMax` 12), new cue, and (owner's call) the display name
+  "Rows / chin-ups" → **"Pull-ups (assisted)"**, since that is what is actually done.
+- The negatives text was written for pull-ups only ("Do these FIRST … full dead hang"). It now lives on the
+  programme entry (`negHint`) and says "after the working sets", with the dead-hang wording kept on pull-ups.
+- **Known one-off, kept on purpose:** the 42 old dips rows are negatives, not assisted reps. For one session the
+  coach reads "last 7 / 7 / 7" as assisted reps and says "Aim for 12". No data change — same decision as squats.
+
 Read `AGENTS.md` first. It governs everything here (ids, branches, tests, SQL, NEVER block).
 
 ---
