@@ -37,6 +37,10 @@ the UI only ever had one weight field per exercise. Nothing was broken; the feat
   card's sentence and Progress's badge all read that one value — so "At the top — repeat to confirm" can never
   sit above a "Ready to advance" tag. Consequence: the tag no longer lights up the first time you hit the top
   today; it marks an exercise that has *confirmed* (two sessions), which is the state the sentence describes.
+- **The "Today" row reads as two lines.** The suggestion is bold on the first line and the reason is its own
+  muted line below it, as a sentence with a subject: "Try 11.5 kg — aim for 6" / "You did 10 / 10 / 10 at
+  10.5 kg twice running." (it used to be "… 10 / 10 / 10 at 10.5 kg for two sessions running." glued to the
+  suggestion). The below-range reason keeps its own subject: "Set 1 did 5 at 24 kg — the target is 6–10."
 
 Read `AGENTS.md` first. It governs everything here (ids, branches, tests, SQL, NEVER block).
 

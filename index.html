@@ -92,6 +92,7 @@
   .coach .clbl{flex:0 0 34px;font-size:.6rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);}
   .coach .cval{color:var(--muted);min-width:0;}
   .coach .cval b{color:var(--ink);}
+  .coach .cwhy{display:block;margin-top:3px;}
   .sets{margin-top:12px;display:flex;flex-direction:column;gap:8px;}
   .setrow{display:flex;align-items:center;gap:10px;}
   .setlbl{font-size:.72rem;font-weight:800;color:var(--faint);width:44px;letter-spacing:.05em;}
@@ -1198,7 +1199,7 @@ function exerciseCard(dateISO,ex,coachData){
     <div class="ex-cue">${ex.cue}</div>
     <div class="coach">
       <div class="crow"><span class="clbl">Last</span><span class="cval" data-last="${ex.id}">${lastSessionLine(reg, coach.last)}</span></div>
-      <div class="crow"><span class="clbl">Today</span><span class="cval" data-today="${ex.id}"><b>${coach.text}</b>${coach.why ? " "+coach.why : ""}</span></div>
+      <div class="crow"><span class="clbl">Today</span><span class="cval" data-today="${ex.id}"><b>${coach.text}</b>${coach.why ? ` <span class="cwhy">${coach.why}</span>` : ""}</span></div>
     </div>
     ${setsHead}<div class="sets">${sets}</div>
     ${negRow}
@@ -1473,16 +1474,16 @@ function coachFor(ex, sessions, deload){
     } else if(ready){
       out.ready = true;
       out.text = "Ready for the next progression";
-      out.why = `${repTxt(out.last)} twice running.`;
+      out.why = `You did ${repTxt(out.last)} twice running.`;
     } else if(atTop(out.last)){
       out.text = "At the top — repeat to confirm, then progress";
-      out.why = `${repTxt(out.last)} all at ${ex.repMax}.`;
+      out.why = `You did ${repTxt(out.last)} last time.`;
     } else if(out.last.sets.some(x=>x.reps<ex.repMin)){
       out.text = "Below the range — ease the variation or add assistance";
       out.why = `${belowRangeNote(out.last.sets, ex)} — the target is ${range}.`;
     } else {
       out.text = `Aim for ${ex.repMax} on every set`;
-      out.why = `${repTxt(out.last)} last time.`;
+      out.why = `You did ${repTxt(out.last)} last time.`;
     }
     return out;
   }
@@ -1504,16 +1505,16 @@ function coachFor(ex, sessions, deload){
     const up = nextAbove(L, w);
     const twice = prevQ && prevQ.weight===w && atTop(prevQ, w);
     if(deload){ out.text = `Deload week — hold ${fmtKg(w)} kg`; out.weight = w; }
-    else if(!twice){ out.text = `Repeat ${fmtKg(w)} kg to confirm, then go up`; out.why = `${reps} at ${fmtKg(w)} kg.`; out.weight = w; }
-    else if(up==null){ out.text = "Top of the loads available — progress by reps, a slower lowering, or single-arm work"; out.why = `${reps} at ${fmtKg(w)} kg.`; }
-    else { out.text = `Try ${fmtKg(up)} kg — aim for ${ex.repMin}`; out.why = `${reps} at ${fmtKg(w)} kg for two sessions running.`; out.weight = up; }
+    else if(!twice){ out.text = `Repeat ${fmtKg(w)} kg to confirm, then go up`; out.why = `You did ${reps} at ${fmtKg(w)} kg last time.`; out.weight = w; }
+    else if(up==null){ out.text = "Top of the loads available — progress by reps, a slower lowering, or single-arm work"; out.why = `You did ${reps} at ${fmtKg(w)} kg twice running.`; }
+    else { out.text = `Try ${fmtKg(up)} kg — aim for ${ex.repMin}`; out.why = `You did ${reps} at ${fmtKg(w)} kg twice running.`; out.weight = up; }
     return out;
   }
   const hold = L.includes(w) ? w : nearestLoad(L, w);       // mid-range, or a dropped last set: hold
   out.text = deload ? `Deload week — hold ${fmtKg(w)} kg`
            : L.includes(w) ? `Same weight — aim for ${ex.repMax}`
            : `Hold ${fmtKg(hold)} kg — aim for ${ex.repMax}`;
-  out.why = L.includes(w) ? `${reps} at ${fmtKg(w)} kg.` : `${reps} at ${fmtKg(w)} kg — nearest rung to ${fmtKg(w)} kg.`;
+  out.why = L.includes(w) ? `You did ${reps} at ${fmtKg(w)} kg last time.` : `You did ${reps} at ${fmtKg(w)} kg; ${fmtKg(hold)} kg is the nearest rung.`;
   out.weight = hold;
   return out;
 }

@@ -62,7 +62,8 @@ const reps = (ex,i)=>`.stepper input[data-ex="${ex}"][data-set="${i}"]`;
   check("C2 all sets at the top, one session → hold, repeat to confirm", /^Repeat 10\.5 kg to confirm/.test(c.text) && c.weight===10.5, c.text);
   c = await g("ohpress", [S(weekAgo(2), [10,10,10], 10.5), S(weekAgo(1), [10,10,10], 10.5)]);
   check("C3 all sets at the top, two sessions running → next achievable load, aim for repMin",
-    c.text==="Try 11.5 kg — aim for 6" && c.weight===11.5 && /two sessions running/.test(c.why), `${c.text} · ${c.why}`);
+    c.text==="Try 11.5 kg — aim for 6" && c.weight===11.5 &&
+    c.why==="You did 10 / 10 / 10 at 10.5 kg twice running.", `${c.text} · ${c.why}`);
   c = await g("ohpress", [S(weekAgo(2), [8,8,7], 11.5), S(weekAgo(1), [8,8,7], 11.5)]);
   check("C4 mid-range → hold, aim for repMax", /^Same weight — aim for 10/.test(c.text) && c.weight===11.5, c.text);
   c = await g("ohpress", [S(weekAgo(2), [10,10,10], 24), S(weekAgo(1), [5,10,10], 24)]);
@@ -210,8 +211,13 @@ const reps = (ex,i)=>`.stepper input[data-ex="${ex}"][data-set="${i}"]`;
     check("C14 the card shows last session's date, working weight and reps per set",
       mon.ohLast===`${d1} · 10.5 kg · 10 / 10 / 10`, mon.ohLast);
     check("C14 …per set when the set weights differ", wed.splitLast===`${d1} · 10.5 / 8 kg · 10 / 10 / 10`, wed.splitLast);
-    check("C14 …and today's suggestion with its reasoning", mon.ohToday.startsWith("Try 11.5 kg — aim for 6") && /two sessions running/.test(mon.ohToday), mon.ohToday);
+    check("C14 …and today's suggestion with its reasoning", mon.ohToday.startsWith("Try 11.5 kg — aim for 6") && /You did 10 \/ 10 \/ 10 at 10\.5 kg twice running\./.test(mon.ohToday), mon.ohToday);
     check("C14 bodyweight card: ready for the next progression", mon.pushToday.startsWith("Ready for the next progression"), mon.pushToday);
+    check("C14 the reason is a sentence on its own line, not a fragment glued to the suggestion", await page.evaluate(()=>{
+      const v = document.querySelector('[data-today="ohpress"]'), w = v.querySelector(".cwhy");
+      return !!w && getComputedStyle(w).display==="block" && v.firstElementChild.tagName==="B"
+             && /^You did |^Set |^Fixed /.test(w.textContent);
+    }));
     check("C14 kbswings: the fixed load, no suggestion", wed.kbToday.startsWith("18.1 kg — top of the set") && /18\.1 kg · 15 \/ 15 \/ 15/.test(wed.kbLast), `${wed.kbToday} · ${wed.kbLast}`);
     check("C15 acceptance 10: the suggestion never pre-fills a field", await page.evaluate(()=>{
       const w=[...document.querySelectorAll('.setweight[data-ex="ohpress"]')].map(e=>e.value);
