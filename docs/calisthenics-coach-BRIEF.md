@@ -12,9 +12,19 @@ the UI only ever had one weight field per exercise. Nothing was broken; the feat
 | A | Per-set weight entry | **Shipped** in 1.3.0 (#12) |
 | D | Cleared sets / no zero-rep rows | **Shipped** in 1.3.0 (#12), corrected in 1.3.1 (#13) |
 | — | Progress past Supabase's 1,000-row cap | **Shipped** in 1.2.4 (#11) |
-| B | Equipment ladders | **To build — 1.4.0** |
-| C | Session coaching | **To build — 1.4.0** (same PR as B) |
+| B | Equipment ladders | **Shipped** in 1.4.0 |
+| C | Session coaching | **Shipped** in 1.4.0 (same PR as B) |
 | E | Rest timer | **Yes, last**, as its own PR after B + C has settled |
+
+### Shipped in 1.4.0 — how the open points were settled
+
+- The card's "Ready to advance" tag and Progress's badge both follow each exercise's **`repMax`** (Progress:
+  every set at `repMax`, two sessions running). The Progress chart's dashed 45-line is unchanged.
+- Off-ladder hold = the **nearest** achievable load; a tie goes to the **lower** rung.
+- Deload week replaces the up-suggestion with a hold.
+- `kbswings`: "18.1 kg — top of the set"; the kettlebell ladder is used for that text and nothing else.
+- Coaching reads sessions strictly **before the day on screen** (today's own entries never count).
+- Nothing else moved: no schema change, no SQL, no id changes, no cue or target text reworded.
 
 Read `AGENTS.md` first. It governs everything here (ids, branches, tests, SQL, NEVER block).
 

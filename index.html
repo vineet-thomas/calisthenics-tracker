@@ -86,6 +86,12 @@
   .ex-name{font-weight:800;font-size:1rem;}
   .ex-target{color:var(--accent);font-size:.76rem;font-weight:700;margin-top:2px;letter-spacing:.02em;}
   .ex-cue{color:var(--muted);font-size:.78rem;margin-top:6px;line-height:1.4;}
+  /* session coaching: what happened last time, what to do today (a suggestion, never an entry) */
+  .coach{margin-top:10px;padding-top:8px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:5px;}
+  .coach .crow{display:flex;gap:9px;align-items:baseline;font-size:.74rem;line-height:1.35;}
+  .coach .clbl{flex:0 0 34px;font-size:.6rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);}
+  .coach .cval{color:var(--muted);min-width:0;}
+  .coach .cval b{color:var(--ink);}
   .sets{margin-top:12px;display:flex;flex-direction:column;gap:8px;}
   .setrow{display:flex;align-items:center;gap:10px;}
   .setlbl{font-size:.72rem;font-weight:800;color:var(--faint);width:44px;letter-spacing:.05em;}
@@ -379,8 +385,8 @@ const PUSH = {
   work:[
     {id:"pushups",name:"Push-ups",target:"3 sets · 12–20 reps",cue:"Stop 1–2 reps before failure. Full range, elbows ~45°. When 3×20 is clean, add a weighted backpack or move to deficit / archer push-ups."},
     {id:"dips",name:"Box / triceps dips",target:"3 sets · 10–15 reps",cue:"Shoulders down, controlled descent. When 3×15 is clean, add weight in a backpack.",assist:true},
-    {id:"ohpress",name:"DB/KB Overhead Press",target:"3 sets · 6–10 reps",cue:"Press straight overhead, avoid arching lower back. Add 2.5 kg when 10 reps feel clean two sessions running.",loaded:true},
-    {id:"floorpress",name:"DB/KB Floor Press",target:"3 sets · 8–12 reps",cue:"Lie on floor/mat, press up, elbows stop just short of touching down.",loaded:true},
+    {id:"ohpress",name:"DB Overhead Press",target:"3 sets · 6–10 reps",cue:"Press straight overhead, avoid arching lower back. Add 2.5 kg when 10 reps feel clean two sessions running.",loaded:true},
+    {id:"floorpress",name:"DB Floor Press",target:"3 sets · 8–12 reps",cue:"Lie on floor/mat, press up, elbows stop just short of touching down.",loaded:true},
     {id:"latraise",name:"Lateral Raise",target:"3 sets · 12–20 reps",cue:"Light, slow, lead with the elbows, stop at shoulder height. Shoulder width is most of what makes a lean frame read as muscular.",loaded:true},
   ],
   stretch:[
@@ -410,7 +416,7 @@ const PULL = {
   work:[
     {id:"rows",name:"Rows / chin-ups",target:"3 sets · 8–15 reps",cue:"Full dead hang at the bottom every rep, lead with elbows. Negatives first while fresh, then this as assisted volume. When 3×15 is clean, reduce the assistance.",assist:true,negatives:true},
     {id:"scapulapull",name:"Scapula pull-ups",target:"3 sets · 8–10 reps",cue:"Dead hang, scapulae elevated to ears, pull scapulae down WITHOUT bending elbows. Builds the initiation strength most people miss on their first real pull-up."},
-    {id:"dbrows",name:"DB/KB Rows",target:"3 sets · 8–12 per side",cue:"Flat back, pull elbow past hip, squeeze at top.",loaded:true},
+    {id:"dbrows",name:"DB Rows",target:"3 sets · 8–12 per side",cue:"Flat back, pull elbow past hip, squeeze at top.",loaded:true},
     {id:"reardelt",name:"Rear Delt Fly",target:"3 sets · 15–20 reps",cue:"Hinged at the hips, light DBs, lead with the elbows. Balances all the pressing and keeps the shoulders healthy.",loaded:true},
     {id:"curl",name:"DB Curl",target:"3 sets · 10–15 reps",cue:"No swinging. Slow on the way down.",loaded:true},
     {id:"core",name:"Hanging leg raises / plank",target:"3 sets · 8–12 reps",cue:"Brace hard, no swinging. Add ankle weight once 12+ reps feel clean."},
@@ -509,25 +515,41 @@ const DAYS = [
 const FOCUS_KIND = { Push:"push", Pull:"pull", Legs:"legs", Tempo:"run", "Long run":"run", Fast:"rest", Rest:"rest", Recovery:"rec" };
 const FULL={Mon:"Monday",Tue:"Tuesday",Wed:"Wednesday",Thu:"Thursday",Fri:"Friday",Sat:"Saturday",Sun:"Sunday"};
 
-// registry of strength exercises for the Progress charts
+// Equipment ladders — master data, versioned in git and changed through a brief like the programme.
+// Suggestions come from the values actually available, never a computed increment: from 10.5 kg the next
+// dumbbell is 11.5, then 13.5. Keep ascending, unique, positive (tests/coaching.test.js checks both ladders).
+const LADDERS = {
+  dumbbell: [2.5, 3.5, 5, 6, 7, 8, 9.5, 10.5, 11.5, 13.5, 16, 18.5, 20.5, 23, 24],
+  // XRT65 adjustable kettlebell: 7.8 / 12.4 / 17.9 / 23.9 / 29.9 / 35.4 / 40 lb at 1 lb = 0.45359237 kg,
+  // one decimal. Nothing progresses on this ladder yet — kbswings is a fixed conditioning load — and that is
+  // deliberate: it is master data for single-arm swings, which will be a NEW id, not a rename of kbswings.
+  kettlebell: [3.5, 5.6, 8.1, 10.8, 13.6, 16.1, 18.1],
+};
+
+// registry of strength exercises for the Progress charts and the coaching rules.
+// ladder / implements / display / repMin / repMax are programme data: never parse repMin or repMax out of the
+// `target` display string, which AGENTS.md allows to be reworded.
+//  ladder      which equipment ladder; "none" = bodyweight
+//  implements  how many implements; "1-2" = either, as the load demands
+//  display     perHand | total — wording only
 const EX_REGISTRY = [
-  { id:"pushups",    name:"Push-ups",              color:"#4f8ff0" },
-  { id:"dips",       name:"Box / triceps dips",    color:"#4f8ff0" },
-  { id:"ohpress",    name:"DB/KB Overhead Press",  color:"#4f8ff0", loaded:true },
-  { id:"floorpress", name:"DB/KB Floor Press",     color:"#4f8ff0", loaded:true },
-  { id:"latraise",   name:"Lateral Raise",         color:"#4f8ff0", loaded:true },
-  { id:"rows",       name:"Rows / chin-ups",       color:"#5ec27e" },
-  { id:"scapulapull",name:"Scapula pull-ups",      color:"#5ec27e" },
-  { id:"dbrows",     name:"DB/KB Rows",            color:"#5ec27e", loaded:true },
-  { id:"reardelt",   name:"Rear Delt Fly",         color:"#5ec27e", loaded:true },
-  { id:"curl",       name:"DB Curl",               color:"#5ec27e", loaded:true },
-  { id:"core",       name:"Hanging leg raises",    color:"#5ec27e" },
-  { id:"squats",     name:"Goblet / DB Squat",     color:"#e0894a", loaded:true },
-  { id:"splitsquat", name:"Bulgarian Split Squat", color:"#e0894a", loaded:true },
-  { id:"rdl",        name:"DB Romanian Deadlift",  color:"#e0894a", loaded:true },
-  { id:"hipthrust",  name:"Hip Thrust",            color:"#e0894a", loaded:true },
-  { id:"calves",     name:"Standing Calf Raise",   color:"#e0894a", loaded:true },
-  { id:"kbswings",   name:"Kettlebell Swings",     color:"#e0894a", loaded:true },
+  { id:"pushups",    name:"Push-ups",              color:"#4f8ff0", ladder:"none", repMin:12, repMax:20 },
+  { id:"dips",       name:"Box / triceps dips",    color:"#4f8ff0", ladder:"none", repMin:10, repMax:15 },
+  { id:"ohpress",    name:"DB Overhead Press",     color:"#4f8ff0", loaded:true, ladder:"dumbbell", implements:2,     display:"perHand", repMin:6,  repMax:10 },
+  { id:"floorpress", name:"DB Floor Press",        color:"#4f8ff0", loaded:true, ladder:"dumbbell", implements:2,     display:"perHand", repMin:8,  repMax:12 },
+  { id:"latraise",   name:"Lateral Raise",         color:"#4f8ff0", loaded:true, ladder:"dumbbell", implements:2,     display:"perHand", repMin:12, repMax:20 },
+  { id:"rows",       name:"Rows / chin-ups",       color:"#5ec27e", ladder:"none", repMin:8, repMax:15 },
+  { id:"scapulapull",name:"Scapula pull-ups",      color:"#5ec27e", ladder:"none", repMin:8, repMax:10 },
+  { id:"dbrows",     name:"DB Rows",               color:"#5ec27e", loaded:true, ladder:"dumbbell", implements:2,     display:"perHand", repMin:8,  repMax:12 },
+  { id:"reardelt",   name:"Rear Delt Fly",         color:"#5ec27e", loaded:true, ladder:"dumbbell", implements:2,     display:"perHand", repMin:15, repMax:20 },
+  { id:"curl",       name:"DB Curl",               color:"#5ec27e", loaded:true, ladder:"dumbbell", implements:2,     display:"perHand", repMin:10, repMax:15 },
+  { id:"core",       name:"Hanging leg raises",    color:"#5ec27e", ladder:"none", repMin:8, repMax:12 },
+  { id:"squats",     name:"Goblet / DB Squat",     color:"#e0894a", loaded:true, ladder:"dumbbell", implements:"1-2", display:"total",  repMin:8,  repMax:12 },
+  { id:"splitsquat", name:"Bulgarian Split Squat", color:"#e0894a", loaded:true, ladder:"dumbbell", implements:2,     display:"perHand", repMin:8,  repMax:12 },
+  { id:"rdl",        name:"DB Romanian Deadlift",  color:"#e0894a", loaded:true, ladder:"dumbbell", implements:2,     display:"perHand", repMin:8,  repMax:12 },
+  { id:"hipthrust",  name:"Hip Thrust",            color:"#e0894a", loaded:true, ladder:"dumbbell", implements:"1-2", display:"total",  repMin:10, repMax:15 },
+  { id:"calves",     name:"Standing Calf Raise",   color:"#e0894a", loaded:true, ladder:"dumbbell", implements:2,     display:"perHand", repMin:15, repMax:20 },
+  { id:"kbswings",   name:"Kettlebell Swings",     color:"#e0894a", loaded:true, ladder:"kettlebell", implements:1,   display:"total" },
 ];
 const ADVANCE_TOTAL = 45; // 15 reps x 3 sets = ready to progress
 
@@ -591,7 +613,7 @@ let online = true;
 const SUPABASE_URL = "https://aqbufgwvlrtegoflqrwl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_1vID-paB_RrmUk5XThwS-g_Qs05BLGH";
 const CACHE_KEY = "calisthenics-75hard-cache-v2";
-const APP_VERSION = "1.3.3";
+const APP_VERSION = "1.4.0";
 const DEBUG = new URLSearchParams(location.search).has("debug");
 document.getElementById("appVer").textContent = "v" + APP_VERSION;
 
@@ -1127,8 +1149,9 @@ function stretchCard(list, num){
     </ul></div></div>`;
 }
 
-function exerciseCard(dateISO,ex){
+function exerciseCard(dateISO,ex,coachData){
   const saved = (state[dateISO] && state[dateISO][ex.id]) || [0,0,0];
+  const reg = regOf(ex.id);
   const wf = ex.loaded ? [0,1,2].map(i=>weightField(dateISO, ex.id, i)) : [];
   const sets = [0,1,2].map(i=>`
     <div class="setrow">
@@ -1143,7 +1166,7 @@ function exerciseCard(dateISO,ex){
              data-ex="${ex.id}" data-set="${i}" value="${wf[i].value}" placeholder="${wf[i].placeholder}" aria-label="Set ${i+1} weight, kg">` : ""}
     </div>`).join("");
   const total = saved.reduce((a,b)=>a+(+b||0),0);
-  const allHit = saved.every(v=>(+v)>=15);
+  const allHit = saved.every(v=>(+v)>=reg.repMax);
   const assistVal = (state[dateISO] && state[dateISO][ex.id+"_assist"]) || "";
   const assistRow = ex.assist ? `
     <div class="assistrow">
@@ -1164,12 +1187,17 @@ function exerciseCard(dateISO,ex){
     </div>` : "";
   const weightRow = ex.loaded ? `
     <div class="assisthint">Increase when all 3 sets hit the top of the rep range with clean form for 2 sessions running.</div>` : "";
-  const setsHead = ex.loaded ? `<div class="setshead">kg · per hand/side</div>` : "";
+  const setsHead = ex.loaded ? `<div class="setshead">kg · ${reg.display==="total" ? "total" : "per hand/side"}</div>` : "";
   const advanceTag = (!ex.loaded && allHit) ? `<span class="advance show" data-adv="${ex.id}">Ready to advance ↑</span>` : "";
+  const coach = coachFor(reg, (coachData && coachData[ex.id]) || [], deloadActive());
   return `<div class="card" data-exid="${ex.id}">
     <div class="ex-name">${ex.name}</div>
     <div class="ex-target">${ex.target}</div>
     <div class="ex-cue">${ex.cue}</div>
+    <div class="coach">
+      <div class="crow"><span class="clbl">Last</span><span class="cval" data-last="${ex.id}">${lastSessionLine(reg, coach.last)}</span></div>
+      <div class="crow"><span class="clbl">Today</span><span class="cval" data-today="${ex.id}"><b>${coach.text}</b>${coach.why ? " "+coach.why : ""}</span></div>
+    </div>
     ${setsHead}<div class="sets">${sets}</div>
     ${negRow}
     ${weightRow}
@@ -1181,10 +1209,10 @@ function exerciseCard(dateISO,ex){
   </div>`;
 }
 
-function workSection(dateISO,data,num){
+function workSection(dateISO,data,num,coachData){
   return `<div class="section">
     <div class="sechead"><span class="num">${num||"02"}</span><h2>Workout</h2><span class="line"></span></div>
-    ${data.work.map(ex=>exerciseCard(dateISO,ex)).join("")}
+    ${data.work.map(ex=>exerciseCard(dateISO,ex,coachData)).join("")}
   </div>`;
 }
 
@@ -1271,7 +1299,7 @@ function render(){
       <div class="n">${flow}</div></div>
     </div>
     ${restDay ? "" : warmupCard(num())}
-    ${isCircuit ? circuitSection(day, num()) : workSection(viewDate, day.data, num())}
+    ${isCircuit ? circuitSection(day, num()) : workSection(viewDate, day.data, num(), coachSessions(viewDate))}
     ${restDay ? mobilitySectionKalym(num()) : ""}
     ${stretchCard(day.data.stretch, num())}
     <button class="complete ${s._done?'on':''}" id="complete">
@@ -1328,6 +1356,159 @@ function refreshWeights(dateISO, exid, skipSet){
   });
 }
 
+// ---- session coaching (brief item C) ----
+// "What happened last time, what to do today" — a suggestion, never an entry: nothing here fills a field.
+// Sessions strictly before the day on screen (today's own work never counts as "last session"), reading the
+// paged history with the same rules as fetchHistory (sets with reps = 0 ignored, a session needs reps > 0).
+// The history is kept on the device so suggestions also work offline.
+const COACH_KEY = "calisthenics-coach-history-v1";
+const COACH_KEEP = 10;                 // sessions kept per exercise: enough for "two sessions running"
+let coachCache = null;                 // { uid, sessions:{ exId:[{date,total,weight,sets:[{reps,weight}]}] } }
+
+function loadCoachHistory(){
+  try{ const r = localStorage.getItem(COACH_KEY); coachCache = r ? JSON.parse(r) : null; }catch(e){ coachCache = null; }
+}
+function saveCoachHistory(byEx){
+  if(!user || !byEx) return;
+  const sessions = {};
+  Object.keys(byEx).forEach(id=>{ sessions[id] = byEx[id].slice(-COACH_KEEP); });
+  coachCache = { uid:user.id, sessions };
+  try{ localStorage.setItem(COACH_KEY, JSON.stringify(coachCache)); }catch(e){}
+}
+function forgetCoachDate(dateISO){
+  if(!coachCache || !coachCache.sessions) return;
+  Object.keys(coachCache.sessions).forEach(id=>{
+    coachCache.sessions[id] = (coachCache.sessions[id]||[]).filter(s=>s.date!==dateISO);
+  });
+  try{ localStorage.setItem(COACH_KEY, JSON.stringify(coachCache)); }catch(e){}
+}
+// the days on this device, as sessions — a session logged offline is still "last session" next week
+function localSessions(){
+  const out = [];
+  Object.keys(state).forEach(date=>{
+    const d = state[date]; if(!d || typeof d!=="object") return;
+    EX_REGISTRY.forEach(ex=>{
+      const reps = d[ex.id]; if(!Array.isArray(reps)) return;
+      const w = d[ex.id+"_w"] || [];
+      const sets = [];
+      for(let i=0;i<reps.length;i++){ const r = +reps[i]||0; if(r>0) sets.push({ reps:r, weight:w[i]==null ? null : +w[i] }); }
+      if(!sets.length) return;
+      const first = sets.find(s=>s.weight!=null);
+      out.push({ ex:ex.id, date, total:sets.reduce((a,b)=>a+b.reps,0), weight:first ? first.weight : null,
+                 sets:sets.map(s=>({ reps:s.reps, weight:s.weight })) });
+    });
+  });
+  return out;
+}
+function coachSessions(viewDate){
+  const by = {};
+  const hist = (coachCache && user && coachCache.uid===user.id) ? (coachCache.sessions||{}) : {};
+  EX_REGISTRY.forEach(ex=>{ by[ex.id] = (hist[ex.id]||[]).map(s=>({ ...s, sets:(s.sets||[]).map(x=>({...x})) })); });
+  localSessions().forEach(s=>{                                  // the device's own copy wins for that date
+    const arr = by[s.ex]; if(!arr) return;
+    const i = arr.findIndex(x=>x.date===s.date);
+    if(i>=0) arr[i] = { date:s.date, total:s.total, weight:s.weight, sets:s.sets };
+    else arr.push({ date:s.date, total:s.total, weight:s.weight, sets:s.sets });
+  });
+  Object.keys(by).forEach(id=>{
+    by[id] = by[id].filter(s=>s.date < viewDate).sort((a,b)=>a.date<b.date?-1:1).slice(-COACH_KEEP);
+  });
+  return by;
+}
+
+// every load actually available: each rung, times each allowed implement count, de-duplicated and sorted.
+// perHand keeps the rung as written (per hand); total with 1–2 implements is the union of single and doubled
+// rungs, so a hip thrust from 24 kg goes to 2 × 13.5 = 27.
+function achievableLoads(ex){
+  const rungs = LADDERS[ex.ladder] || [];
+  const mult = (ex.display==="total" && ex.implements==="1-2") ? [1,2] : [1];
+  const out = [];
+  rungs.forEach(r=>mult.forEach(m=>{ const v = +(r*m).toFixed(1); if(!out.includes(v)) out.push(v); }));
+  return out.sort((a,b)=>a-b);
+}
+function nextAbove(L, w){ const up = L.filter(v=>v>w); return up.length ? up[0] : null; }
+function nextBelow(L, w){ const dn = L.filter(v=>v<w); return dn.length ? dn[dn.length-1] : null; }
+function nearestLoad(L, w){                                   // ties go to the lower rung (the safer one)
+  let best = L[0];
+  L.forEach(v=>{ const d = Math.abs(v-w), bd = Math.abs(best-w); if(d < bd || (d===bd && v<best)) best = v; });
+  return best;
+}
+const deloadActive = ()=> deloadWeekStart === currentWeekMonday();
+const regOf = id=> EX_REGISTRY.find(e=>e.id===id) || {};
+// weights are written as logged, to one decimal (the ladder's precision: 18.14 kg reads as 18.1)
+const fmtKg = v=> String(Math.round(v*10)/10);
+
+// ex: the EX_REGISTRY entry; sessions: that exercise's sessions, oldest first, all before the day on screen
+function coachFor(ex, sessions, deload){
+  const out = { last: sessions.length ? sessions[sessions.length-1] : null, weight:null, text:"", why:"" };
+  const range = `${ex.repMin}–${ex.repMax}`;
+  const repTxt = s=>s.sets.map(x=>x.reps).join(" / ");
+  const atTop = (s, w)=> s.sets.length>0 && s.sets.every(x=>x.reps>=ex.repMax)
+                          && s.sets.every(x=>x.weight==null || w==null || x.weight>=w);   // no dropped later set
+
+  if(ex.id==="kbswings"){                      // fixed conditioning load: never a weight suggestion
+    out.text = "18.1 kg — top of the set";
+    out.why = "Fixed conditioning load — it never progresses by weight.";
+    return out;
+  }
+  if(ex.ladder==="none"){
+    if(!out.last) { out.text = `No session yet — work in the ${range} rep range`; return out; }
+    const prev = sessions[sessions.length-2];
+    if(atTop(out.last) && prev && atTop(prev)){
+      out.text = deload ? "Deload week — hold where you are" : "Ready for the next progression";
+      if(!deload) out.why = `${repTxt(out.last)} twice running.`;
+    } else if(atTop(out.last)){
+      out.text = "At the top — repeat to confirm, then progress";
+      out.why = `${repTxt(out.last)} all at ${ex.repMax}.`;
+    } else if(out.last.sets.some(x=>x.reps<ex.repMin)){
+      out.text = "Below the range — ease the variation or add assistance";
+      out.why = `${repTxt(out.last)} is under ${ex.repMin}.`;
+    } else {
+      out.text = `Aim for ${ex.repMax} on every set`;
+      out.why = `${repTxt(out.last)} last time.`;
+    }
+    return out;
+  }
+
+  // loaded: only sessions with a working weight can be compared (squats were bodyweight until 11 Nov)
+  const withW = sessions.filter(s=>s.weight!=null);
+  const q = withW[withW.length-1];
+  if(!q){ out.text = `No weighted session yet — ${range} reps at a weight you can control`; return out; }
+  const L = achievableLoads(ex), w = q.weight, reps = repTxt(q);
+  const prevQ = withW[withW.length-2];
+
+  if(q.sets.some(x=>x.reps<ex.repMin)){                     // one rung down, never more
+    const down = nextBelow(L, w);
+    if(down==null){ out.text = `Bottom of the ladder — hold ${fmtKg(w)} kg and keep the reps clean`; out.weight = w; }
+    else { out.text = `Drop to ${fmtKg(down)} kg — aim for ${ex.repMin}`; out.why = `${reps} at ${fmtKg(w)} kg is below the ${range} target.`; out.weight = down; }
+    return out;
+  }
+  if(atTop(q, w)){
+    const up = nextAbove(L, w);
+    const twice = prevQ && prevQ.weight===w && atTop(prevQ, w);
+    if(deload){ out.text = `Deload week — hold ${fmtKg(w)} kg`; out.weight = w; }
+    else if(!twice){ out.text = `Repeat ${fmtKg(w)} kg to confirm, then go up`; out.why = `${reps} at ${fmtKg(w)} kg.`; out.weight = w; }
+    else if(up==null){ out.text = "Top of the loads available — progress by reps, a slower lowering, or single-arm work"; out.why = `${reps} at ${fmtKg(w)} kg.`; }
+    else { out.text = `Try ${fmtKg(up)} kg — aim for ${ex.repMin}`; out.why = `${reps} at ${fmtKg(w)} kg for two sessions running.`; out.weight = up; }
+    return out;
+  }
+  const hold = L.includes(w) ? w : nearestLoad(L, w);       // mid-range, or a dropped last set: hold
+  out.text = deload ? `Deload week — hold ${fmtKg(w)} kg`
+           : L.includes(w) ? `Same weight — aim for ${ex.repMax}`
+           : `Hold ${fmtKg(hold)} kg — aim for ${ex.repMax}`;
+  out.why = L.includes(w) ? `${reps} at ${fmtKg(w)} kg.` : `${reps} at ${fmtKg(w)} kg — nearest rung to ${fmtKg(w)} kg.`;
+  out.weight = hold;
+  return out;
+}
+function lastSessionLine(ex, s){
+  if(!s) return "No session yet";
+  const reps = s.sets.map(x=>x.reps).join(" / ");
+  if(ex.ladder==="none") return `${fmtDate(s.date)} · ${reps}`;
+  const uniq = [...new Set(s.sets.filter(x=>x.weight!=null).map(x=>x.weight))];
+  const wtxt = uniq.length>1 ? uniq.map(fmtKg).join(" / ")+" kg" : uniq.length===1 ? fmtKg(uniq[0])+" kg" : "";
+  return `${fmtDate(s.date)} · ${wtxt ? wtxt+" · " : ""}${reps}`;
+}
+
 // Reps: workout_log.reps is integer NOT NULL, and reps = 0 means "cleared" — never send null.
 // A set that was never logged stays unwritten (no row). A logged set that is cleared keeps its row with
 // reps = 0 (deletes can't be ordered by the newest-edit rule); every reader ignores sets with reps = 0.
@@ -1354,7 +1535,7 @@ function refreshTotals(dateISO,exid){
   if(tEl) tEl.textContent = t;
   const isLoaded = EX_REGISTRY.some(e=>e.id===exid && e.loaded);
   const adv = document.querySelector(`[data-adv="${exid}"]`);
-  if(adv) adv.classList.toggle("show", !isLoaded && arr.every(v=>(+v)>=15));
+  if(adv) adv.classList.toggle("show", !isLoaded && arr.every(v=>(+v)>=regOf(exid).repMax));
 }
 
 function bind(dateISO, day){
@@ -1422,7 +1603,7 @@ function renderDayDots(){
 
 document.getElementById("reset").onclick=()=>{
   const dateISO=dateForTab(current);
-  if(state[dateISO]){ delete state[dateISO]; deleteDay(dateISO); render(); }
+  if(state[dateISO]){ delete state[dateISO]; deleteDay(dateISO); forgetCoachDate(dateISO); render(); }
 };
 
 // ---- header date + default to current weekday ----
@@ -1451,6 +1632,7 @@ function authMsg(text, cls){
 async function initAuth(){
   loadCache();
   loadOutbox();
+  loadCoachHistory();
   sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY,
     { auth:{ persistSession:true, autoRefreshToken:true } });
 
@@ -1480,6 +1662,7 @@ async function afterLogin(){
   checkStoragePersistence();
   await pullWeek();
   await fetchDeloadSettings();
+  await fetchHistory(false);     // coaching needs the paged history; it is kept on the device for offline use
   render();
 }
 
@@ -1647,21 +1830,27 @@ async function fetchHistory(force){
       //    whether or not set 1 has reps. Since 1.3.0 set 1's row is no longer special for weight, but it
       //    still is for these. Don't "normalise" this away: a date with negatives but no logged sets is
       //    real data and must stay on the negatives chart (it just isn't a session).
-      const agg = {}; // key exId|date -> total reps
-      const wgt = {};  // key exId|date -> [set_index, weight] of the working set
+      // Per-set reps and weights are kept too: the coaching rules need them ("any set below repMin",
+      // "all sets at the top", "a dropped last set means hold").
+      const agg = {}; // key exId|date -> { total, weight, wset, sets:[{reps,weight}] }
       (data||[]).forEach(r=>{
         if(!byEx[r.exercise_id]) return;
         const k = r.exercise_id+"|"+r.log_date;
         if(r.set_index===0 && r.negatives!=null) negByEx[r.exercise_id].push({ date:r.log_date, negatives:r.negatives });
         if(!(r.reps > 0)) return;
-        agg[k] = (agg[k]||0) + r.reps;
-        if(r.weight_kg!=null && (!wgt[k] || r.set_index < wgt[k][0])) wgt[k] = [r.set_index, r.weight_kg];
+        const rec = agg[k] = agg[k] || { total:0, weight:null, wset:null, sets:[] };
+        rec.total += r.reps;
+        rec.sets.push({ i:r.set_index, reps:r.reps, weight:r.weight_kg==null ? null : r.weight_kg });
+        if(r.weight_kg!=null && (rec.wset==null || r.set_index < rec.wset)){ rec.wset = r.set_index; rec.weight = r.weight_kg; }
       });
       Object.keys(agg).forEach(k=>{
-        const [exId,date]=k.split("|");
-        byEx[exId].push({ date, total: agg[k], weight: wgt[k] ? wgt[k][1] : null });
+        const [exId,date]=k.split("|"), rec = agg[k];
+        rec.sets.sort((a,b)=>a.i-b.i);
+        byEx[exId].push({ date, total: rec.total, weight: rec.weight,
+                          sets: rec.sets.map(x=>({ reps:x.reps, weight:x.weight })) });
       });
       Object.keys(byEx).forEach(exId=>{ byEx[exId].sort((a,b)=> a.date<b.date?-1:1); negByEx[exId].sort((a,b)=> a.date<b.date?-1:1); });
+      saveCoachHistory(byEx);                      // kept on the device so coaching works offline
     }catch(e){ captureError("HISTORY", e); }
   }
   historyCache = { sessions:byEx, negatives:negByEx };
@@ -1722,8 +1911,10 @@ async function renderProgress(){
     const negs = hist.negatives[ex.id] || [];
     const best = pts.length ? Math.max(...pts.map(p=>p.total)) : 0;
     const bestWeight = pts.length ? Math.max(...pts.filter(p=>p.weight!=null).map(p=>p.weight), 0) : 0;
-    const recent = pts.slice(-3);
-    const readyNow = !ex.loaded && recent.length>=2 && recent.every(p=>p.total>=ADVANCE_TOTAL);
+    const recent = pts.slice(-2);
+    // "ready" = every set at or above repMax, two sessions running (the same rule the card's coaching uses)
+    const readyNow = !ex.loaded && recent.length===2 &&
+      recent.every(p=>(p.sets||[]).length>0 && p.sets.every(s=>s.reps>=ex.repMax));
     html += `<div class="chartcard">
       <div class="ct">
         <span class="nm">${ex.name}${readyNow?'<span class="pg-ready">Ready to advance</span>':''}</span>
