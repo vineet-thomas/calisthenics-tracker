@@ -384,7 +384,7 @@ const WARMUP = [
 
 const PUSH = {
   work:[
-    {id:"pushups",name:"Push-ups",target:"3 sets · 12–20 reps",cue:"Stop 1–2 reps before failure. Full range, elbows ~45°. When 3×20 is clean, add a weighted backpack or move to deficit / archer push-ups."},
+    {id:"pushups",name:"Push-ups",target:"3 sets · 12–20 reps",cue:"Stop 1–2 reps before failure. Full range, elbows ~45°. When 3×20 is clean, add a weighted backpack or move to deficit / archer push-ups. Even sets — pick a number you can repeat for all three, roughly 80% of your single-set max. Don't empty the tank on set 1."},
     {id:"dips",name:"Triceps dips",target:"3 sets · 6–12 reps",cue:"Band looped across the dip handles, knees in it — enough assistance to press out of the bottom on every rep. Full depth, shoulders down, elbows back. Negatives last, after the working sets. Reduce the band when 3×12 is clean.",assist:true,negatives:true,negHint:"After the working sets, banded or unassisted — lower as slowly as you can, shoulders down."},
     {id:"ohpress",name:"DB Overhead Press",target:"3 sets · 6–10 reps",cue:"Press straight overhead, avoid arching lower back. Go up a rung when all 3 sets hit the top of the range twice running.",loaded:true},
     {id:"floorpress",name:"DB Floor Press",target:"3 sets · 8–12 reps",cue:"Lie on floor/mat, press up, elbows stop just short of touching down.",loaded:true},
@@ -616,7 +616,7 @@ let online = true;
 const SUPABASE_URL = "https://aqbufgwvlrtegoflqrwl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_1vID-paB_RrmUk5XThwS-g_Qs05BLGH";
 const CACHE_KEY = "calisthenics-75hard-cache-v2";
-const APP_VERSION = "1.4.2";
+const APP_VERSION = "1.4.3";
 const DEBUG = new URLSearchParams(location.search).has("debug");
 document.getElementById("appVer").textContent = "v" + APP_VERSION;
 
