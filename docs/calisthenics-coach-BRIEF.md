@@ -26,7 +26,7 @@ the UI only ever had one weight field per exercise. Nothing was broken; the feat
 - Coaching reads sessions strictly **before the day on screen** (today's own entries never count).
 - Nothing else moved: no schema change, no SQL, no id changes, no cue or target text reworded.
 
-### Shipped in 1.4.1 — three follow-ups from reading the shipped cards
+### Shipped in 1.4.1 — follow-ups from reading the shipped cards
 
 - **Cues no longer quote an increment.** `ohpress` and `squats` said "add 2.5 kg …", which is not a step on the
   dumbbell ladder (from 10.5 the next rung is 11.5). They now say "go up a rung when all 3 sets hit the top of
@@ -41,6 +41,11 @@ the UI only ever had one weight field per exercise. Nothing was broken; the feat
   muted line below it, as a sentence with a subject: "Try 11.5 kg — aim for 6" / "You did 10 / 10 / 10 at
   10.5 kg twice running." (it used to be "… 10 / 10 / 10 at 10.5 kg for two sessions running." glued to the
   suggestion). The below-range reason keeps its own subject: "Set 1 did 5 at 24 kg — the target is 6–10."
+- **A correction made in Supabase now reaches the card.** `coachSessions` used to let this device's cached copy
+  of a day override the freshly fetched history, so a row fixed in Supabase kept showing its old reps (1 / 1 / 10
+  on a date the cloud already said 10 / 10 / 10). The cloud is now authoritative for any date it has; the device
+  copy only fills dates the cloud doesn't have. An edit made here still shows at once, because `pushSet` /
+  `pushSetWeight` drop that date from the cached history (`forgetCoachDate`).
 
 Read `AGENTS.md` first. It governs everything here (ids, branches, tests, SQL, NEVER block).
 

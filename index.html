@@ -945,7 +945,9 @@ function applyOutbox(){
 }
 
 // ---- cloud writes (all go through the outbox) ----
+// any change to a date makes the cached cloud copy of that date untrustworthy (see coachSessions)
 function pushSet(dateISO, day, exid, setIdx, fields){
+  forgetCoachDate(dateISO);
   enqueue({ t:"log", date:dateISO, day, ex:exid, set:setIdx, f:fields });
 }
 // assistance and negatives are exercise-level values kept on the set_index 0 row (see the note in fetchHistory)
@@ -953,6 +955,7 @@ function pushAssist(dateISO, day, exid, assist){
   enqueue({ t:"log", date:dateISO, day, ex:exid, set:0, f:{ assist } });
 }
 function pushSetWeight(dateISO, day, exid, setIdx, weight){
+  forgetCoachDate(dateISO);
   enqueue({ t:"log", date:dateISO, day, ex:exid, set:setIdx, f:{ weight_kg: weight } });
 }
 function pushNegatives(dateISO, day, exid, reps){
@@ -1407,11 +1410,13 @@ function coachSessions(viewDate){
   const by = {};
   const hist = (coachCache && user && coachCache.uid===user.id) ? (coachCache.sessions||{}) : {};
   EX_REGISTRY.forEach(ex=>{ by[ex.id] = (hist[ex.id]||[]).map(s=>({ ...s, sets:(s.sets||[]).map(x=>({...x})) })); });
-  localSessions().forEach(s=>{                                  // the device's own copy wins for that date
+  localSessions().forEach(s=>{                                  // the device's copy fills gaps only
     const arr = by[s.ex]; if(!arr) return;
-    const i = arr.findIndex(x=>x.date===s.date);
-    if(i>=0) arr[i] = { date:s.date, total:s.total, weight:s.weight, sets:s.sets };
-    else arr.push({ date:s.date, total:s.total, weight:s.weight, sets:s.sets });
+    // the cloud is the source of truth for a date it already has: a correction made in Supabase must not be
+    // masked by this device's cached copy of that day. A date edited here has already been dropped from the
+    // cache (pushSet → forgetCoachDate), so its local copy still wins until the next fetch.
+    if(arr.some(x=>x.date===s.date)) return;
+    arr.push({ date:s.date, total:s.total, weight:s.weight, sets:s.sets });
   });
   Object.keys(by).forEach(id=>{
     by[id] = by[id].filter(s=>s.date < viewDate).sort((a,b)=>a.date<b.date?-1:1).slice(-COACH_KEEP);

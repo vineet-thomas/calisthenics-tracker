@@ -282,6 +282,37 @@ const reps = (ex,i)=>`.stepper input[data-ex="${ex}"][data-set="${i}"]`;
       offline===online && offline.startsWith("Try 11.5 kg"), `${online} → ${offline}`);
     await done(page); }
 
+  // ---- a correction made in Supabase must reach the card ----
+  // (the card kept showing "1 / 1 / 10" for a date the cloud had already been corrected to "10 / 10 / 10":
+  //  this device's cached copy of that day was overriding the freshly fetched history)
+  { const CACHE = "calisthenics-75hard-cache-v2";
+    const S4 = makeServer({ workout_log:[
+        ...rows(weekAgo(2), "ohpress", [10,10,10], 10.5),
+        ...rows(weekAgo(1), "ohpress", [10,10,10], 10.5) ], day_status:[] });
+    const stale = {}; stale[weekAgo(1)] = { ohpress:[1,1,10], ohpress_w:[10.5,10.5,10.5] };
+    const page = await newPage(browser, BASE, S4, { before: p=>p.addInitScript(([k,v])=>{
+      const st = JSON.parse(localStorage.getItem(k)||"{}");
+      Object.assign(st, v);                       // what this device cached for that day, before the correction
+      localStorage.setItem(k, JSON.stringify(st));
+    }, [CACHE, stale]) });
+    await sleep(800);
+    const last = await page.locator('[data-last="ohpress"]').textContent();
+    const today = await page.locator('[data-today="ohpress"]').textContent();
+    check("C24 a Supabase correction reaches the card — the device's cached copy of that day can't mask it",
+      /10 \/ 10 \/ 10/.test(last) && /^Try 11\.5 kg/.test(today), `${last} · ${today}`);
+    // …but a set edited *here* still wins straight away: the edit drops the cached copy of that day
+    const edit = await page.evaluate(date=>{
+      const later = "2099-01-01";
+      const read = ()=>coachSessions(later).ohpress.find(s=>s.date===date).sets.map(s=>s.reps).join("/");
+      state[date] = Object.assign(state[date]||{}, { ohpress:[12,12,12], ohpress_w:[10.5,10.5,10.5] });
+      const cloudWins = read();                       // before the edit: the cloud copy is the one shown
+      pushSet(date, "Mon", "ohpress", 0, { reps: 12 });// exactly what the stepper does
+      return { cloudWins, afterEdit:read() };
+    }, weekAgo(1));
+    check("C24 …while a set edited on this device still shows at once (the edit drops the cached copy of that day)",
+      edit.cloudWins==="10/10/10" && edit.afterEdit==="12/12/12", `${edit.cloudWins} → ${edit.afterEdit}`);
+    await done(page); }
+
   // ---- Progress: the ready badge follows the same repMax rule ----
   { const S3 = makeServer(seed); const page = await newPage(browser, BASE, S3);
     await page.click("#tabProgress"); await sleep(900);
