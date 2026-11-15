@@ -385,7 +385,7 @@ const PUSH = {
   work:[
     {id:"pushups",name:"Push-ups",target:"3 sets · 12–20 reps",cue:"Stop 1–2 reps before failure. Full range, elbows ~45°. When 3×20 is clean, add a weighted backpack or move to deficit / archer push-ups."},
     {id:"dips",name:"Box / triceps dips",target:"3 sets · 10–15 reps",cue:"Shoulders down, controlled descent. When 3×15 is clean, add weight in a backpack.",assist:true},
-    {id:"ohpress",name:"DB Overhead Press",target:"3 sets · 6–10 reps",cue:"Press straight overhead, avoid arching lower back. Add 2.5 kg when 10 reps feel clean two sessions running.",loaded:true},
+    {id:"ohpress",name:"DB Overhead Press",target:"3 sets · 6–10 reps",cue:"Press straight overhead, avoid arching lower back. Go up a rung when all 3 sets hit the top of the range twice running.",loaded:true},
     {id:"floorpress",name:"DB Floor Press",target:"3 sets · 8–12 reps",cue:"Lie on floor/mat, press up, elbows stop just short of touching down.",loaded:true},
     {id:"latraise",name:"Lateral Raise",target:"3 sets · 12–20 reps",cue:"Light, slow, lead with the elbows, stop at shoulder height. Shoulder width is most of what makes a lean frame read as muscular.",loaded:true},
   ],
@@ -398,7 +398,7 @@ const PUSH = {
 };
 const LEGS = {
   work:[
-    {id:"squats",name:"Goblet / DB Squat",target:"3 sets · 8–12 reps",cue:"One DB at the chest, or two at the shoulders. Full depth, knees tracking toes. Add 2.5 kg when 12 reps feel clean two sessions running.",loaded:true},
+    {id:"squats",name:"Goblet / DB Squat",target:"3 sets · 8–12 reps",cue:"One DB at the chest, or two at the shoulders. Full depth, knees tracking toes. Go up a rung when all 3 sets hit the top of the range twice running.",loaded:true},
     {id:"splitsquat",name:"Bulgarian Split Squat",target:"3 sets · 8–12 per side",cue:"Rear foot on a chair, a DB in each hand. Front shin near vertical, drive through the heel. Your heaviest available leg stimulus — 2×24 kg through one leg.",loaded:true},
     {id:"rdl",name:"DB Romanian Deadlift",target:"3 sets · 8–12 reps",cue:"DBs in front of the thighs, soft knees, push the hips BACK — not down. Lower until the hamstrings stretch, then drive the hips forward. A four-second lowering makes a light load heavy.",loaded:true},
     {id:"hipthrust",name:"Hip Thrust",target:"3 sets · 10–15 reps",cue:"Shoulder blades on a sofa or bench edge, DB across the hips. Squeeze the glutes hard at the top, 1s pause, chin tucked.",loaded:true},
@@ -551,7 +551,9 @@ const EX_REGISTRY = [
   { id:"calves",     name:"Standing Calf Raise",   color:"#e0894a", loaded:true, ladder:"dumbbell", implements:2,     display:"perHand", repMin:15, repMax:20 },
   { id:"kbswings",   name:"Kettlebell Swings",     color:"#e0894a", loaded:true, ladder:"kettlebell", implements:1,   display:"total" },
 ];
-const ADVANCE_TOTAL = 45; // 15 reps x 3 sets = ready to progress
+// ready to advance = every set at the top of the range, so 3 × repMax total — per exercise, because
+// the ranges differ (overhead press tops out at 30 total, push-ups at 60: one flat 45 was wrong for both)
+const ADVANCE_TOTAL = ex => 3 * (ex.repMax || 0);
 
 // body-composition metrics with target lines (Vineet's recomp goal)
 const BODY_METRICS = [
@@ -613,7 +615,7 @@ let online = true;
 const SUPABASE_URL = "https://aqbufgwvlrtegoflqrwl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_1vID-paB_RrmUk5XThwS-g_Qs05BLGH";
 const CACHE_KEY = "calisthenics-75hard-cache-v2";
-const APP_VERSION = "1.4.0";
+const APP_VERSION = "1.4.1";
 const DEBUG = new URLSearchParams(location.search).has("debug");
 document.getElementById("appVer").textContent = "v" + APP_VERSION;
 
@@ -1166,7 +1168,6 @@ function exerciseCard(dateISO,ex,coachData){
              data-ex="${ex.id}" data-set="${i}" value="${wf[i].value}" placeholder="${wf[i].placeholder}" aria-label="Set ${i+1} weight, kg">` : ""}
     </div>`).join("");
   const total = saved.reduce((a,b)=>a+(+b||0),0);
-  const allHit = saved.every(v=>(+v)>=reg.repMax);
   const assistVal = (state[dateISO] && state[dateISO][ex.id+"_assist"]) || "";
   const assistRow = ex.assist ? `
     <div class="assistrow">
@@ -1188,8 +1189,9 @@ function exerciseCard(dateISO,ex,coachData){
   const weightRow = ex.loaded ? `
     <div class="assisthint">Increase when all 3 sets hit the top of the rep range with clean form for 2 sessions running.</div>` : "";
   const setsHead = ex.loaded ? `<div class="setshead">kg · ${reg.display==="total" ? "total" : "per hand/side"}</div>` : "";
-  const advanceTag = (!ex.loaded && allHit) ? `<span class="advance show" data-adv="${ex.id}">Ready to advance ↑</span>` : "";
   const coach = coachFor(reg, (coachData && coachData[ex.id]) || [], deloadActive());
+  // the tag is the coaching state, highlighted — it can never say something the sentence doesn't
+  const advanceTag = (!ex.loaded && coach.ready) ? `<span class="advance show" data-adv="${ex.id}">Ready to advance ↑</span>` : "";
   return `<div class="card" data-exid="${ex.id}">
     <div class="ex-name">${ex.name}</div>
     <div class="ex-target">${ex.target}</div>
@@ -1438,9 +1440,20 @@ const regOf = id=> EX_REGISTRY.find(e=>e.id===id) || {};
 // weights are written as logged, to one decimal (the ladder's precision: 18.14 kg reads as 18.1)
 const fmtKg = v=> String(Math.round(v*10)/10);
 
-// ex: the EX_REGISTRY entry; sessions: that exercise's sessions, oldest first, all before the day on screen
+// the sets that are actually below the range, named — "Set 1 did 5", "Sets 2 and 3 did 10"
+// (the old line said "13 / 10 / 10 is under 12", which read as a contradiction)
+function belowRangeNote(sets, ex){
+  const bad = sets.map((s,i)=>({ n:i+1, reps:s.reps })).filter(x=>x.reps < ex.repMin);
+  const list = a=> a.length===1 ? String(a[0]) : a.slice(0,-1).join(", ")+" and "+a[a.length-1];
+  const who = bad.length===1 ? `Set ${bad[0].n}` : `Sets ${list(bad.map(b=>b.n))}`;
+  return `${who} did ${list([...new Set(bad.map(b=>b.reps))])}`;
+}
+
+// ex: the EX_REGISTRY entry; sessions: that exercise's sessions, oldest first, all before the day on screen.
+// `ready` is the one place "ready to advance" is decided: the sentence, the card tag and the Progress badge
+// all read it, so they can never disagree.
 function coachFor(ex, sessions, deload){
-  const out = { last: sessions.length ? sessions[sessions.length-1] : null, weight:null, text:"", why:"" };
+  const out = { last: sessions.length ? sessions[sessions.length-1] : null, weight:null, text:"", why:"", ready:false };
   const range = `${ex.repMin}–${ex.repMax}`;
   const repTxt = s=>s.sets.map(x=>x.reps).join(" / ");
   const atTop = (s, w)=> s.sets.length>0 && s.sets.every(x=>x.reps>=ex.repMax)
@@ -1454,15 +1467,19 @@ function coachFor(ex, sessions, deload){
   if(ex.ladder==="none"){
     if(!out.last) { out.text = `No session yet — work in the ${range} rep range`; return out; }
     const prev = sessions[sessions.length-2];
-    if(atTop(out.last) && prev && atTop(prev)){
-      out.text = deload ? "Deload week — hold where you are" : "Ready for the next progression";
-      if(!deload) out.why = `${repTxt(out.last)} twice running.`;
+    const ready = !!prev && atTop(out.last) && atTop(prev);
+    if(ready && deload){
+      out.text = "Deload week — hold where you are";
+    } else if(ready){
+      out.ready = true;
+      out.text = "Ready for the next progression";
+      out.why = `${repTxt(out.last)} twice running.`;
     } else if(atTop(out.last)){
       out.text = "At the top — repeat to confirm, then progress";
       out.why = `${repTxt(out.last)} all at ${ex.repMax}.`;
     } else if(out.last.sets.some(x=>x.reps<ex.repMin)){
       out.text = "Below the range — ease the variation or add assistance";
-      out.why = `${repTxt(out.last)} is under ${ex.repMin}.`;
+      out.why = `${belowRangeNote(out.last.sets, ex)} — the target is ${range}.`;
     } else {
       out.text = `Aim for ${ex.repMax} on every set`;
       out.why = `${repTxt(out.last)} last time.`;
@@ -1480,7 +1497,7 @@ function coachFor(ex, sessions, deload){
   if(q.sets.some(x=>x.reps<ex.repMin)){                     // one rung down, never more
     const down = nextBelow(L, w);
     if(down==null){ out.text = `Bottom of the ladder — hold ${fmtKg(w)} kg and keep the reps clean`; out.weight = w; }
-    else { out.text = `Drop to ${fmtKg(down)} kg — aim for ${ex.repMin}`; out.why = `${reps} at ${fmtKg(w)} kg is below the ${range} target.`; out.weight = down; }
+    else { out.text = `Drop to ${fmtKg(down)} kg — aim for ${ex.repMin}`; out.why = `${belowRangeNote(q.sets, ex)} at ${fmtKg(w)} kg — the target is ${range}.`; out.weight = down; }
     return out;
   }
   if(atTop(q, w)){
@@ -1533,9 +1550,7 @@ function refreshTotals(dateISO,exid){
   const t = arr.reduce((a,b)=>a+(+b||0),0);
   const tEl = document.querySelector(`[data-total="${exid}"]`);
   if(tEl) tEl.textContent = t;
-  const isLoaded = EX_REGISTRY.some(e=>e.id===exid && e.loaded);
-  const adv = document.querySelector(`[data-adv="${exid}"]`);
-  if(adv) adv.classList.toggle("show", !isLoaded && arr.every(v=>(+v)>=regOf(exid).repMax));
+  // the "Ready to advance" tag comes from the last two sessions, so typing today doesn't change it
 }
 
 function bind(dateISO, day){
@@ -1857,17 +1872,17 @@ async function fetchHistory(force){
   return historyCache;
 }
 
-function lineChartSVG(points, color){
-  // points: [{date,total}]
+function lineChartSVG(points, color, threshold){
+  // points: [{date,total}]; threshold: total reps that mean "every set at the top" for this exercise
   const W=320, H=120, padL=26, padR=10, padT=12, padB=20;
   const iw=W-padL-padR, ih=H-padT-padB;
-  const maxY = Math.max(ADVANCE_TOTAL, ...points.map(p=>p.total), 10);
+  const maxY = Math.max(threshold, ...points.map(p=>p.total), 10);
   const n = points.length;
   const x = i => n<=1 ? padL+iw/2 : padL + (iw*i/(n-1));
   const y = v => padT + ih - (ih * v / maxY);
 
   // advance threshold line
-  const ty = y(ADVANCE_TOTAL);
+  const ty = y(threshold);
   let svg = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">`;
   // y grid: 0 and max
   svg += `<line x1="${padL}" y1="${y(0)}" x2="${W-padR}" y2="${y(0)}" stroke="#2a3242" stroke-width="1"/>`;
@@ -1875,7 +1890,7 @@ function lineChartSVG(points, color){
   svg += `<text x="2" y="${padT+4}" fill="#5b6577" font-size="8">${maxY}</text>`;
   // advance line (dashed amber)
   svg += `<line x1="${padL}" y1="${ty}" x2="${W-padR}" y2="${ty}" stroke="#f0c14f" stroke-width="1" stroke-dasharray="4 3" opacity="0.7"/>`;
-  svg += `<text x="${W-padR}" y="${ty-3}" fill="#f0c14f" font-size="8" text-anchor="end">advance (45)</text>`;
+  svg += `<text x="${W-padR}" y="${ty-3}" fill="#f0c14f" font-size="8" text-anchor="end">advance (${threshold})</text>`;
 
   if(n>0){
     // area + line path
@@ -1883,7 +1898,7 @@ function lineChartSVG(points, color){
     svg += `<path d="${path}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`;
     // dots; highlight ones that hit threshold
     points.forEach((p,i)=>{
-      const hit = p.total>=ADVANCE_TOTAL;
+      const hit = p.total>=threshold;
       svg += `<circle cx="${x(i).toFixed(1)}" cy="${y(p.total).toFixed(1)}" r="${hit?3.5:2.5}" fill="${hit?'#5ec27e':color}"/>`;
     });
   }
@@ -1903,7 +1918,7 @@ async function renderProgress(){
 
   let html = `<div class="pg-head">
     <h2>Rep progression</h2>
-    <p>Total reps per session for each exercise. The dashed amber line is the advance threshold (15 reps × 3 sets = 45). When your last few sessions sit on or above it, move to the next Kalym progression.</p>
+    <p>Total reps per session for each exercise. The dashed amber line is this exercise's advance threshold — every set at the top of its range (3 × its top rep count). When your last few sessions sit on or above it, move to the next Kalym progression.</p>
   </div>`;
 
   EX_REGISTRY.forEach(ex=>{
@@ -1911,10 +1926,8 @@ async function renderProgress(){
     const negs = hist.negatives[ex.id] || [];
     const best = pts.length ? Math.max(...pts.map(p=>p.total)) : 0;
     const bestWeight = pts.length ? Math.max(...pts.filter(p=>p.weight!=null).map(p=>p.weight), 0) : 0;
-    const recent = pts.slice(-2);
-    // "ready" = every set at or above repMax, two sessions running (the same rule the card's coaching uses)
-    const readyNow = !ex.loaded && recent.length===2 &&
-      recent.every(p=>(p.sets||[]).length>0 && p.sets.every(s=>s.reps>=ex.repMax));
+    // "ready" is the card's coaching state, not a second opinion: two sessions at the top of the range
+    const readyNow = !ex.loaded && !!coachFor(ex, pts, deloadActive()).ready;
     html += `<div class="chartcard">
       <div class="ct">
         <span class="nm">${ex.name}${readyNow?'<span class="pg-ready">Ready to advance</span>':''}</span>
@@ -1928,7 +1941,7 @@ async function renderProgress(){
         const wpts = pts.filter(p=>p.weight!=null).map(p=>({log_date:p.date, w:p.weight}));
         html += wpts.length ? metricChartSVG(wpts, "w", ex.color, null) : `<div class="empty">Log a weight to start the trend.</div>`;
       } else {
-        html += lineChartSVG(pts, ex.color);
+        html += lineChartSVG(pts, ex.color, ADVANCE_TOTAL(ex));
       }
     }
     // negatives: their own series from set 1's row, so a date with negatives but no logged sets still shows

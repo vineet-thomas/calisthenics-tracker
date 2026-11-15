@@ -26,6 +26,18 @@ the UI only ever had one weight field per exercise. Nothing was broken; the feat
 - Coaching reads sessions strictly **before the day on screen** (today's own entries never count).
 - Nothing else moved: no schema change, no SQL, no id changes, no cue or target text reworded.
 
+### Shipped in 1.4.1 — three follow-ups from reading the shipped cards
+
+- **Cues no longer quote an increment.** `ohpress` and `squats` said "add 2.5 kg …", which is not a step on the
+  dumbbell ladder (from 10.5 the next rung is 11.5). They now say "go up a rung when all 3 sets hit the top of
+  the range twice running" — the cue states the *rule*, the card states the *kg*. A check keeps it that way.
+- **The advance line is per exercise.** One flat 45 was wrong on both sides: overhead press tops out at 30
+  total, push-ups at 60. It is now `3 × repMax` (`ADVANCE_TOTAL(ex)`), and the heading no longer quotes 45.
+- **The tag is the coaching state, not a second opinion.** `coachFor` returns `ready`, and the card's tag, the
+  card's sentence and Progress's badge all read that one value — so "At the top — repeat to confirm" can never
+  sit above a "Ready to advance" tag. Consequence: the tag no longer lights up the first time you hit the top
+  today; it marks an exercise that has *confirmed* (two sessions), which is the state the sentence describes.
+
 Read `AGENTS.md` first. It governs everything here (ids, branches, tests, SQL, NEVER block).
 
 ---
