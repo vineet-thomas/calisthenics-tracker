@@ -52,7 +52,7 @@ const reps = (ex,i)=>`.stepper input[data-ex="${ex}"][data-set="${i}"]`;
   // ---- C: the load rules, one by one ----
   const coach = (exId, sessions, deload=false)=>page0.evaluate(([exId,sessions,deload])=>{
     const c = coachFor(EX_REGISTRY.find(e=>e.id===exId), sessions, deload);
-    return { text:c.text, why:c.why, weight:c.weight };
+    return { text:c.text, why:c.why, weight:c.weight, ready:c.ready };
   }, [exId, sessions, deload]);
   const g = (...a)=>coach(...a);
 
@@ -62,11 +62,14 @@ const reps = (ex,i)=>`.stepper input[data-ex="${ex}"][data-set="${i}"]`;
   check("C2 all sets at the top, one session → hold, repeat to confirm", /^Repeat 10\.5 kg to confirm/.test(c.text) && c.weight===10.5, c.text);
   c = await g("ohpress", [S(weekAgo(2), [10,10,10], 10.5), S(weekAgo(1), [10,10,10], 10.5)]);
   check("C3 all sets at the top, two sessions running → next achievable load, aim for repMin",
-    c.text==="Try 11.5 kg — aim for 6" && c.weight===11.5 && /two sessions running/.test(c.why), `${c.text} · ${c.why}`);
+    c.text==="Try 11.5 kg — aim for 6" && c.weight===11.5 &&
+    c.why==="You did 10 / 10 / 10 at 10.5 kg twice running.", `${c.text} · ${c.why}`);
   c = await g("ohpress", [S(weekAgo(2), [8,8,7], 11.5), S(weekAgo(1), [8,8,7], 11.5)]);
   check("C4 mid-range → hold, aim for repMax", /^Same weight — aim for 10/.test(c.text) && c.weight===11.5, c.text);
   c = await g("ohpress", [S(weekAgo(2), [10,10,10], 24), S(weekAgo(1), [5,10,10], 24)]);
   check("C5 any set below repMin → one rung down, never more (24 → 23, not 20.5)", /^Drop to 23 kg/.test(c.text) && c.weight===23, c.text);
+  check("C5 …and it says which set was short, not that all of them were",
+    c.why==="Set 1 did 5 at 24 kg — the target is 6–10.", c.why);
   check("C5 …and it wins over the two-sessions-at-the-top rule",
     !/Try/.test(c.text), c.text);
 
@@ -96,13 +99,15 @@ const reps = (ex,i)=>`.stepper input[data-ex="${ex}"][data-set="${i}"]`;
   // bodyweight: reps-only coaching
   c = await g("pushups", [S(weekAgo(2), [20,20,20], null), S(weekAgo(1), [20,20,20], null)]);
   check("C10 bodyweight, two sessions at repMax → ready for the next progression",
-    c.text==="Ready for the next progression" && /twice running/.test(c.why), `${c.text} · ${c.why}`);
+    c.text==="Ready for the next progression" && /twice running/.test(c.why) && c.ready===true, `${c.text} · ${c.why}`);
   c = await g("pushups", [S(weekAgo(1), [20,20,20], null)]);
-  check("C10 bodyweight, one session at repMax → repeat to confirm", /^At the top — repeat to confirm/.test(c.text), c.text);
+  check("C10 bodyweight, one session at repMax → repeat to confirm", /^At the top — repeat to confirm/.test(c.text) && c.ready===false, c.text);
   c = await g("pushups", [S(weekAgo(1), [15,15,15], null)]);
   check("C10 bodyweight, mid-range → aim for repMax", c.text==="Aim for 20 on every set", c.text);
-  c = await g("pushups", [S(weekAgo(1), [11,20,20], null)]);
+  c = await g("pushups", [S(weekAgo(1), [13,10,10], null)]);
   check("C10 bodyweight, a set below repMin → ease the variation or add assistance", /^Below the range/.test(c.text), c.text);
+  check("C10 …naming only the sets that missed the range (13 / 10 / 10 is not \"under 12\")",
+    c.why==="Sets 2 and 3 did 10 — the target is 12–20.", c.why);
   c = await g("dips", []);
   check("C10 bodyweight with no history → the range only", /No session yet — work in the 10–15 rep range/.test(c.text) && c.weight===null, c.text);
 
@@ -116,7 +121,7 @@ const reps = (ex,i)=>`.stepper input[data-ex="${ex}"][data-set="${i}"]`;
   c = await g("ohpress", [S(weekAgo(2), [10,10,10], 10.5), S(weekAgo(1), [10,10,10], 10.5)], true);
   check("C12 deload week suppresses the up-suggestion", /^Deload week — hold 10\.5 kg/.test(c.text) && c.weight===10.5, c.text);
   c = await g("pushups", [S(weekAgo(2), [20,20,20], null), S(weekAgo(1), [20,20,20], null)], true);
-  check("C12 …for bodyweight work too", /^Deload week/.test(c.text) && !/Ready for the next/.test(c.text), c.text);
+  check("C12 …for bodyweight work too", /^Deload week/.test(c.text) && !/Ready for the next/.test(c.text) && c.ready===false, c.text);
 
   // acceptance 2: across every loaded exercise and a spread of histories, no invented load
   const sweep = await page0.evaluate(([dates])=>{
@@ -141,6 +146,31 @@ const reps = (ex,i)=>`.stepper input[data-ex="${ex}"][data-set="${i}"]`;
   // a "hold" repeats the weight already used, so only a *new* load has to be on the ladder
   const aboveCeiling = sweep.filter(x=>x.weight!=null && x.weight!==x.working && x.weight>Math.max(...x.ladder));
   check("C13 …and never above the top of the ladder", aboveCeiling.length===0, aboveCeiling.map(x=>`${x.id} ${x.weight}`).join(", "));
+
+  // ---- cues must not quote an increment the ladder can't deliver ----
+  const cues = await page0.evaluate(()=>{
+    const by = {};
+    DAYS.forEach(d=>(((d.data||{}).work)||[]).forEach(x=>{ if(x.id) by[x.id]=x.cue||""; }));
+    return EX_REGISTRY.map(e=>({ id:e.id, cue:by[e.id]||"" }));
+  });
+  const withKg = cues.filter(c=>/(add|increase)\s+\d+(\.\d+)?\s*kg/i.test(c.cue));
+  check("C22 no cue tells you to add a weight (2.5 kg is not a rung: from 10.5 the next dumbbell is 11.5)",
+    withKg.length===0, withKg.map(c=>c.id).join(", "));
+  check("C22 …the two that did now defer to the suggestion (\"go up a rung … twice running\")",
+    /go up a rung when all 3 sets hit the top of the range twice running/i.test(cues.find(c=>c.id==="ohpress").cue) &&
+    /go up a rung when all 3 sets hit the top of the range twice running/i.test(cues.find(c=>c.id==="squats").cue),
+    [cues.find(c=>c.id==="ohpress").cue, cues.find(c=>c.id==="squats").cue].join(" | "));
+
+  // ---- the advance line is per exercise, not one flat 45 ----
+  const th = await page0.evaluate(()=>({
+    vals:["pushups","dips","scapulapull","ohpress","squats"].map(id=>[id, ADVANCE_TOTAL(EX_REGISTRY.find(e=>e.id===id))]),
+    kb:ADVANCE_TOTAL(EX_REGISTRY.find(e=>e.id==="kbswings")),
+  }));
+  check("C23 the advance line is 3 × that exercise's repMax (push-ups 60, dips 45, scapula pull-ups 30)",
+    JSON.stringify(th.vals)===JSON.stringify([["pushups",60],["dips",45],["scapulapull",30],["ohpress",30],["squats",36]]),
+    JSON.stringify(th.vals));
+  check("C23 …so a range that tops out below 15 reps is not permanently 'not ready' (overhead press 30)",
+    th.vals.find(v=>v[0]==="ohpress")[1]===30 && th.kb===0, JSON.stringify(th));
   await done(page0);
 
   // ---- the card: last session, today's suggestion, the tag, the wording ----
@@ -151,6 +181,8 @@ const reps = (ex,i)=>`.stepper input[data-ex="${ex}"][data-set="${i}"]`;
       ...rows(weekAgo(1), "pushups", [20,20,20], null),
       ...rows(weekAgo(2), "dips", [12,12,12], null),
       ...rows(weekAgo(1), "dips", [12,12,12], null),
+      ...rows(weekAgo(2), "scapulapull", [10,10,10], null, "Fri"),
+      ...rows(weekAgo(1), "scapulapull", [10,10,10], null, "Fri"),
       ...rows(weekAgo(1), "splitsquat", [10,10,10], [10.5,8,8]),
       ...rows(weekAgo(1), "kbswings", [15,15,15], 18.14),
     ], day_status:[] };
@@ -179,8 +211,13 @@ const reps = (ex,i)=>`.stepper input[data-ex="${ex}"][data-set="${i}"]`;
     check("C14 the card shows last session's date, working weight and reps per set",
       mon.ohLast===`${d1} · 10.5 kg · 10 / 10 / 10`, mon.ohLast);
     check("C14 …per set when the set weights differ", wed.splitLast===`${d1} · 10.5 / 8 kg · 10 / 10 / 10`, wed.splitLast);
-    check("C14 …and today's suggestion with its reasoning", mon.ohToday.startsWith("Try 11.5 kg — aim for 6") && /two sessions running/.test(mon.ohToday), mon.ohToday);
+    check("C14 …and today's suggestion with its reasoning", mon.ohToday.startsWith("Try 11.5 kg — aim for 6") && /You did 10 \/ 10 \/ 10 at 10\.5 kg twice running\./.test(mon.ohToday), mon.ohToday);
     check("C14 bodyweight card: ready for the next progression", mon.pushToday.startsWith("Ready for the next progression"), mon.pushToday);
+    check("C14 the reason is a sentence on its own line, not a fragment glued to the suggestion", await page.evaluate(()=>{
+      const v = document.querySelector('[data-today="ohpress"]'), w = v.querySelector(".cwhy");
+      return !!w && getComputedStyle(w).display==="block" && v.firstElementChild.tagName==="B"
+             && /^You did |^Set |^Fixed /.test(w.textContent);
+    }));
     check("C14 kbswings: the fixed load, no suggestion", wed.kbToday.startsWith("18.1 kg — top of the set") && /18\.1 kg · 15 \/ 15 \/ 15/.test(wed.kbLast), `${wed.kbToday} · ${wed.kbLast}`);
     check("C15 acceptance 10: the suggestion never pre-fills a field", await page.evaluate(()=>{
       const w=[...document.querySelectorAll('.setweight[data-ex="ohpress"]')].map(e=>e.value);
@@ -200,18 +237,37 @@ const reps = (ex,i)=>`.stepper input[data-ex="${ex}"][data-set="${i}"]`;
     check("C19 coached cards fit 390 px on the push, legs and pull days",
       mon.overflow<=390 && wed.overflow<=390 && pull.overflow<=390, `${mon.overflow} / ${wed.overflow} / ${pull.overflow} px`);
 
-    // the tag now follows repMax, not a flat 15
+    // the tag is the coaching state, so it cannot disagree with the sentence above it
+    const tagOn = id=>page.locator(`[data-adv="${id}"]`).evaluate(e=>e.classList.contains("show"));
+    check("C18 'Ready to advance' shows at load for a confirmed exercise, next to the sentence that says why",
+      await tagOn("pushups") && /^Ready for the next progression/.test(mon.pushToday), mon.pushToday);
+    check("C18 …and not for one whose sets are short of the top (dips 12, repMax 15)",
+      !(await tagOn("dips")) && /^Aim for 15/.test(await page.locator('[data-today="dips"]').textContent()));
+    await page.tab(4);
+    check("C18 …the threshold is the exercise's own range: scapula pull-ups confirm at 10 (a flat 15 never could)",
+      await tagOn("scapulapull"));
+    await page.tab(0);
+    // a state, not a counter of today's sets: it is earned by two sessions and is not revoked by a lighter one
     await page.fill(reps("pushups",0), "15"); await page.fill(reps("pushups",1), "15"); await page.fill(reps("pushups",2), "15");
     await sleep(300);
-    const at15 = await page.locator('[data-adv="pushups"]').evaluate(e=>e.classList.contains("show"));
+    check("C18 …and it still matches the sentence after a lighter set today",
+      (await tagOn("pushups")) === /^Ready for the next progression/.test(await page.locator('[data-today="pushups"]').textContent()));
     await page.fill(reps("pushups",1), "20"); await page.fill(reps("pushups",2), "20"); await page.fill(reps("pushups",0), "20");
     await sleep(300);
-    const at20 = await page.locator('[data-adv="pushups"]').evaluate(e=>e.classList.contains("show"));
-    check("C18 the 'Ready to advance' tag follows repMax (push-ups 20, not a flat 15)", !at15 && at20, `15s: ${at15}, 20s: ${at20}`);
-    await page.tab(4); await page.fill(reps("scapulapull",0), "10"); await page.fill(reps("scapulapull",1), "10"); await page.fill(reps("scapulapull",2), "10");
-    await sleep(300);
-    check("C18 …and a lower range reaches it sooner (scapula pull-ups, 10)", await page.locator('[data-adv="scapulapull"]').evaluate(e=>e.classList.contains("show")));
+
+    // every card on the three training days: tag ⇔ "Ready for the next progression"
+    const disagree = [];
+    for(const i of [0,2,4]){
+      await page.tab(i);
+      const rowsOut = await page.evaluate(()=>[...document.querySelectorAll(".card[data-exid]")].map(c=>{
+        const id=c.dataset.exid;
+        return { id, tag:c.querySelector(`[data-adv="${id}"]`).classList.contains("show"),
+                 text:c.querySelector(`[data-today="${id}"]`).textContent };
+      }));
+      rowsOut.filter(x=>x.tag !== /^Ready for the next progression/.test(x.text)).forEach(x=>disagree.push(x.id));
+    }
     await page.tab(0);
+    check("C18 the tag and the coaching sentence agree on every card (Mon, Wed, Fri)", disagree.length===0, disagree.join(", "));
 
     await page.locator('.card[data-exid="ohpress"]').screenshot({ path:__dirname+"/.tmp/coach-card.png" });
     errors.push(...page.errors); await page.ctx.close(); }
@@ -231,10 +287,18 @@ const reps = (ex,i)=>`.stepper input[data-ex="${ex}"][data-set="${i}"]`;
     await page.click("#tabProgress"); await sleep(900);
     const pg = await page.evaluate(()=>{
       const cards = [...document.querySelectorAll("#progressView .chartcard")];
-      const ready = id=>{ const c = cards.find(x=>x.dataset.exid===id) || cards.find(x=>x.querySelector(".nm").childNodes[0].textContent===EX_REGISTRY.find(e=>e.id===id).name); return c ? /Ready to advance/.test(c.textContent) : null; };
-      return { pushups:ready("pushups"), dips:ready("dips"), charts:document.querySelectorAll("#progressView svg").length };
+      const byId = id=>cards.find(x=>x.dataset.exid===id) || cards.find(x=>x.querySelector(".nm").childNodes[0].textContent===EX_REGISTRY.find(e=>e.id===id).name);
+      const ready = id=>{ const c=byId(id); return c ? /Ready to advance/.test(c.textContent) : null; };
+      const label = id=>{ const c=byId(id); return c ? [...c.querySelectorAll("text")].map(t=>t.textContent).find(t=>/^advance \(/.test(t)) : null; };
+      return { pushups:ready("pushups"), dips:ready("dips"), scap:ready("scapulapull"),
+               charts:document.querySelectorAll("#progressView svg").length,
+               labelPush:label("pushups"), labelScap:label("scapulapull"),
+               head:document.querySelector("#progressView .pg-head p").textContent };
     });
     check("C21 Progress marks push-ups ready (20 reps twice) but not dips (12 reps, under 15)", pg.pushups===true && pg.dips===false && pg.charts>0, JSON.stringify(pg));
+    check("C21 …scapula pull-ups are ready at their own top (10), and the line says so", pg.scap===true && pg.labelScap==="advance (30)", `${pg.scap} · ${pg.labelScap}`);
+    check("C21 the dashed line is per exercise (push-ups 60), and the heading no longer claims a flat 45",
+      pg.labelPush==="advance (60)" && /3 × its top rep count/.test(pg.head) && !/45/.test(pg.head), `${pg.labelPush} · ${pg.head}`);
     errors.push(...page.errors); await page.ctx.close(); }
 
   await browser.close();
