@@ -43,7 +43,7 @@ const badge = p=>p.locator("#syncBadge").textContent();
     check("2d failed badge persists across refresh", (await badge(page))==="⚠ 1 failed");
     await page.click("#syncBadge"); await sleep(300);
     const panel = await page.locator("#syncBody").innerText();
-    check("2e panel shows the entry and the reason", /Box \/ triceps dips/.test(panel) && /set 1: 7 reps/.test(panel) && /42501/.test(panel) && /HTTP 403/.test(panel), panel.replace(/\n+/g," | ").slice(0,200));
+    check("2e panel shows the entry and the reason", /Triceps dips/.test(panel) && /set 1: 7 reps/.test(panel) && /42501/.test(panel) && /HTTP 403/.test(panel), panel.replace(/\n+/g," | ").slice(0,200));
     S.reject.clear();
     await page.click("#syncRetry"); await sleep(1500);
     check("2f retry succeeds once fixed", S.rows().includes("dips[0] reps=7 w=undefined") && (await badge(page))==="Synced", await badge(page));
