@@ -208,6 +208,20 @@
   #saved.show{opacity:1;transform:translateX(-50%) translateY(0);}
   #saved.warn{background:#e8944a;}
 
+  /* rest timer: a thin bar pinned to the top (the toasts live at the bottom) */
+  #restBar{position:fixed;top:0;left:0;right:0;z-index:100;display:none;align-items:center;gap:10px;
+    padding:calc(env(safe-area-inset-top) + 7px) 12px 9px;background:var(--panel2);
+    border-bottom:1px solid var(--line);box-shadow:0 2px 10px rgba(0,0,0,.4);overflow:hidden;}
+  #restBar.show{display:flex;}
+  #restBar .rname{flex:1;min-width:0;font-size:.74rem;font-weight:700;color:var(--muted);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  #restBar .rtime{font-size:1.15rem;font-weight:800;font-variant-numeric:tabular-nums;color:var(--ink);}
+  #restBar.over .rname,#restBar.over .rtime{color:var(--done);}
+  #restBar button{background:none;border:1px solid var(--line);color:var(--ink);border-radius:8px;
+    padding:5px 10px;min-height:30px;font-size:.72rem;font-weight:800;}
+  #restBar .rfill{position:absolute;left:0;bottom:0;height:3px;width:0;background:var(--accent);transition:width .25s linear;}
+  #restBar.over .rfill{background:var(--done);}
+
   /* user-facing error toast + feedback */
   #userErr{position:fixed;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 12px);
     z-index:120;background:var(--panel2);border:1px solid #e8944a;border-radius:12px;
@@ -342,6 +356,7 @@
   <div class="appver" id="appVer"></div>
 </div>
 <div id="saved">Saved ✓</div>
+<div id="restBar" role="timer"><span class="rname"></span><span class="rtime"></span><button id="restMute" aria-label="Rest alerts on or off"></button><button id="restSkip"></button><div class="rfill"></div></div>
 <div id="userErr">
   <span class="msg">Couldn't sync just now — your entry is saved on this device and will upload when the connection is back.</span>
   <button onclick="openFeedback()">Report</button>
@@ -533,24 +548,25 @@ const LADDERS = {
 //  ladder      which equipment ladder; "none" = bodyweight
 //  implements  how many implements; "1-2" = either, as the load demands
 //  display     perHand | total — wording only
+//  rest        target rest in seconds: the rest timer counts down from it after a set of this exercise
 const EX_REGISTRY = [
-  { id:"pushups",    name:"Push-ups",              color:"#4f8ff0", ladder:"none", repMin:12, repMax:20 },
-  { id:"dips",       name:"Triceps dips",          color:"#4f8ff0", ladder:"none", repMin:6, repMax:12 },
-  { id:"ohpress",    name:"DB Overhead Press",     color:"#4f8ff0", loaded:true, ladder:"dumbbell", implements:2,     display:"perHand", repMin:6,  repMax:10 },
-  { id:"floorpress", name:"DB Floor Press",        color:"#4f8ff0", loaded:true, ladder:"dumbbell", implements:2,     display:"perHand", repMin:8,  repMax:12 },
-  { id:"latraise",   name:"Lateral Raise",         color:"#4f8ff0", loaded:true, ladder:"dumbbell", implements:2,     display:"perHand", repMin:12, repMax:20 },
-  { id:"rows",       name:"Pull-ups (assisted)",   color:"#5ec27e", ladder:"none", repMin:6, repMax:12 },
-  { id:"scapulapull",name:"Scapula pull-ups",      color:"#5ec27e", ladder:"none", repMin:8, repMax:10 },
-  { id:"dbrows",     name:"DB Rows",               color:"#5ec27e", loaded:true, ladder:"dumbbell", implements:2,     display:"perHand", repMin:8,  repMax:12 },
-  { id:"reardelt",   name:"Rear Delt Fly",         color:"#5ec27e", loaded:true, ladder:"dumbbell", implements:2,     display:"perHand", repMin:15, repMax:20 },
-  { id:"curl",       name:"DB Curl",               color:"#5ec27e", loaded:true, ladder:"dumbbell", implements:2,     display:"perHand", repMin:10, repMax:15 },
-  { id:"core",       name:"Hanging leg raises",    color:"#5ec27e", ladder:"none", repMin:8, repMax:12 },
-  { id:"squats",     name:"Goblet / DB Squat",     color:"#e0894a", loaded:true, ladder:"dumbbell", implements:"1-2", display:"total",  repMin:8,  repMax:12 },
-  { id:"splitsquat", name:"Bulgarian Split Squat", color:"#e0894a", loaded:true, ladder:"dumbbell", implements:2,     display:"perHand", repMin:8,  repMax:12 },
-  { id:"rdl",        name:"DB Romanian Deadlift",  color:"#e0894a", loaded:true, ladder:"dumbbell", implements:2,     display:"perHand", repMin:8,  repMax:12 },
-  { id:"hipthrust",  name:"Hip Thrust",            color:"#e0894a", loaded:true, ladder:"dumbbell", implements:"1-2", display:"total",  repMin:10, repMax:15 },
-  { id:"calves",     name:"Standing Calf Raise",   color:"#e0894a", loaded:true, ladder:"dumbbell", implements:2,     display:"perHand", repMin:15, repMax:20 },
-  { id:"kbswings",   name:"Kettlebell Swings",     color:"#e0894a", loaded:true, ladder:"kettlebell", implements:1,   display:"total" },
+  { id:"pushups",    name:"Push-ups",              color:"#4f8ff0", ladder:"none", repMin:12, repMax:20, rest:90 },
+  { id:"dips",       name:"Triceps dips",          color:"#4f8ff0", ladder:"none", repMin:6, repMax:12, rest:120 },
+  { id:"ohpress",    name:"DB Overhead Press",     color:"#4f8ff0", loaded:true, ladder:"dumbbell", implements:2,     display:"perHand", repMin:6,  repMax:10, rest:120 },
+  { id:"floorpress", name:"DB Floor Press",        color:"#4f8ff0", loaded:true, ladder:"dumbbell", implements:2,     display:"perHand", repMin:8,  repMax:12, rest:120 },
+  { id:"latraise",   name:"Lateral Raise",         color:"#4f8ff0", loaded:true, ladder:"dumbbell", implements:2,     display:"perHand", repMin:12, repMax:20, rest:90 },
+  { id:"rows",       name:"Pull-ups (assisted)",   color:"#5ec27e", ladder:"none", repMin:6, repMax:12, rest:120 },
+  { id:"scapulapull",name:"Scapula pull-ups",      color:"#5ec27e", ladder:"none", repMin:8, repMax:10, rest:90 },
+  { id:"dbrows",     name:"DB Rows",               color:"#5ec27e", loaded:true, ladder:"dumbbell", implements:2,     display:"perHand", repMin:8,  repMax:12, rest:90 },
+  { id:"reardelt",   name:"Rear Delt Fly",         color:"#5ec27e", loaded:true, ladder:"dumbbell", implements:2,     display:"perHand", repMin:15, repMax:20, rest:90 },
+  { id:"curl",       name:"DB Curl",               color:"#5ec27e", loaded:true, ladder:"dumbbell", implements:2,     display:"perHand", repMin:10, repMax:15, rest:90 },
+  { id:"core",       name:"Hanging leg raises",    color:"#5ec27e", ladder:"none", repMin:8, repMax:12, rest:90 },
+  { id:"squats",     name:"Goblet / DB Squat",     color:"#e0894a", loaded:true, ladder:"dumbbell", implements:"1-2", display:"total",  repMin:8,  repMax:12, rest:120 },
+  { id:"splitsquat", name:"Bulgarian Split Squat", color:"#e0894a", loaded:true, ladder:"dumbbell", implements:2,     display:"perHand", repMin:8,  repMax:12, rest:120 },
+  { id:"rdl",        name:"DB Romanian Deadlift",  color:"#e0894a", loaded:true, ladder:"dumbbell", implements:2,     display:"perHand", repMin:8,  repMax:12, rest:120 },
+  { id:"hipthrust",  name:"Hip Thrust",            color:"#e0894a", loaded:true, ladder:"dumbbell", implements:"1-2", display:"total",  repMin:10, repMax:15, rest:120 },
+  { id:"calves",     name:"Standing Calf Raise",   color:"#e0894a", loaded:true, ladder:"dumbbell", implements:2,     display:"perHand", repMin:15, repMax:20, rest:90 },
+  { id:"kbswings",   name:"Kettlebell Swings",     color:"#e0894a", loaded:true, ladder:"kettlebell", implements:1,   display:"total", rest:60 },
 ];
 // ready to advance = every set at the top of the range, so 3 × repMax total — per exercise, because
 // the ranges differ (overhead press tops out at 30 total, push-ups at 60: one flat 45 was wrong for both)
@@ -616,7 +632,7 @@ let online = true;
 const SUPABASE_URL = "https://aqbufgwvlrtegoflqrwl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_1vID-paB_RrmUk5XThwS-g_Qs05BLGH";
 const CACHE_KEY = "calisthenics-75hard-cache-v2";
-const APP_VERSION = "1.4.3";
+const APP_VERSION = "1.5.0";
 const DEBUG = new URLSearchParams(location.search).has("debug");
 document.getElementById("appVer").textContent = "v" + APP_VERSION;
 
@@ -1532,6 +1548,102 @@ function lastSessionLine(ex, s){
   return `${fmtDate(s.date)} · ${wtxt ? wtxt+" · " : ""}${reps}`;
 }
 
+// ---- rest timer ----
+// Starts when a set's reps go UP on today's open day and counts down from that exercise's `rest`. It runs to
+// zero and stops, also after set 3: the gap before the next exercise is rest too, and nothing new starts for it.
+// One timer — the next tap restarts it. Weight edits, clears, past days and completed days never start it.
+// The beep and vibration only fire while the page is open, so the screen wake lock keeps the phone awake for
+// the countdown and is let go at zero or on skip (no service worker involved). The end time is stored, so a
+// countdown that outlives the screen (lock refused, tab discarded) is still right when the app comes back.
+const REST_KEY = "calisthenics-rest-v1", REST_MUTE_KEY = "calisthenics-rest-mute-v1";
+let rest = null;                       // { ex, end, secs, date } while counting · { ex, over:true } after zero
+let restTimer = null, restHide = null, restWake = null, restWakeBusy = false, restAudio = null;
+const restMuted = ()=>{ try{ return localStorage.getItem(REST_MUTE_KEY)==="1"; }catch(e){ return false; } };
+const fmtClock = s=> Math.floor(s/60)+":"+String(s%60).padStart(2,"0");
+
+function restEligible(dateISO){ return dateISO===isoOf(new Date()) && !(state[dateISO] && state[dateISO]._done); }
+function startRest(dateISO, exid){
+  const ex = regOf(exid);
+  if(!ex.rest || !restEligible(dateISO)) return;
+  clearTimeout(restHide);
+  rest = { ex:exid, end:Date.now()+ex.rest*1000, secs:ex.rest, date:dateISO };
+  try{ localStorage.setItem(REST_KEY, JSON.stringify(rest)); }catch(e){}
+  primeRestAudio(); wakeOn();
+  clearInterval(restTimer); restTimer = setInterval(tickRest, 250);
+  tickRest();
+}
+function tickRest(){
+  if(!rest || rest.over) return;
+  if(Date.now() >= rest.end) finishRest(true); else paintRest();
+}
+function finishRest(withAlert){
+  clearInterval(restTimer); restTimer = null; wakeOff();
+  try{ localStorage.removeItem(REST_KEY); }catch(e){}
+  rest = { ex:rest.ex, over:true };
+  if(withAlert && !restMuted()) restAlert();
+  paintRest();
+  clearTimeout(restHide); restHide = setTimeout(stopRest, 6000);
+}
+function stopRest(){
+  clearInterval(restTimer); restTimer = null; clearTimeout(restHide); wakeOff(); rest = null;
+  try{ localStorage.removeItem(REST_KEY); }catch(e){}
+  paintRest();
+}
+function paintRest(){
+  const bar = document.getElementById("restBar"); if(!bar) return;
+  if(!rest){ bar.classList.remove("show"); return; }
+  const left = rest.over ? 0 : Math.max(0, Math.ceil((rest.end-Date.now())/1000));
+  bar.classList.add("show"); bar.classList.toggle("over", !!rest.over);
+  bar.querySelector(".rname").textContent = (rest.over ? "Rest over · " : "Rest · ") + regOf(rest.ex).name;
+  bar.querySelector(".rtime").textContent = fmtClock(left);
+  bar.querySelector(".rfill").style.width = rest.over ? "100%" : (100*(1-left/rest.secs)).toFixed(1)+"%";
+  bar.querySelector("#restMute").textContent = restMuted() ? "🔕" : "🔔";
+  bar.querySelector("#restSkip").textContent = rest.over ? "OK" : "Skip";
+}
+function restAlert(){
+  try{ if(navigator.vibrate) navigator.vibrate([250,120,250]); }catch(e){}
+  try{
+    const ac = restAudio; if(!ac) return;
+    [0, 0.28].forEach(t=>{ const o = ac.createOscillator(), g = ac.createGain();
+      o.frequency.value = 880; g.gain.value = 0.2; o.connect(g); g.connect(ac.destination);
+      o.start(ac.currentTime+t); o.stop(ac.currentTime+t+0.2); });
+  }catch(e){}
+}
+function primeRestAudio(){                // created on a tap, which is what lets it sound later
+  try{
+    if(!restAudio){ const AC = window.AudioContext || window.webkitAudioContext; if(AC) restAudio = new AC(); }
+    if(restAudio && restAudio.resume) restAudio.resume();
+  }catch(e){}
+}
+async function wakeOn(){
+  if(restWake || restWakeBusy || !navigator.wakeLock) return;
+  restWakeBusy = true;
+  try{
+    const w = await navigator.wakeLock.request("screen");
+    if(!rest || rest.over){ w.release(); return; }          // finished or skipped while the request was pending
+    restWake = w; w.addEventListener("release", ()=>{ if(restWake===w) restWake = null; });
+  }catch(e){ restWake = null; }                              // refused or unsupported: the stored end time still holds
+  finally{ restWakeBusy = false; }
+}
+function wakeOff(){ try{ const w = restWake; restWake = null; if(w) w.release(); }catch(e){} }
+function resumeRest(){
+  try{
+    const r = JSON.parse(localStorage.getItem(REST_KEY) || "null");
+    if(r && r.end > Date.now() && r.date===isoOf(new Date()) && regOf(r.ex).rest){
+      rest = r; wakeOn(); clearInterval(restTimer); restTimer = setInterval(tickRest, 250); tickRest();
+    } else localStorage.removeItem(REST_KEY);
+  }catch(e){}
+}
+document.addEventListener("visibilitychange", ()=>{        // the lock is dropped when the page is hidden: take it again
+  if(document.visibilityState!=="visible" || !rest || rest.over) return;
+  if(Date.now() >= rest.end) finishRest(false); else { wakeOn(); tickRest(); }
+});
+document.getElementById("restSkip").onclick = stopRest;
+document.getElementById("restMute").onclick = ()=>{
+  try{ localStorage.setItem(REST_MUTE_KEY, restMuted() ? "0" : "1"); }catch(e){}
+  paintRest();
+};
+
 // Reps: workout_log.reps is integer NOT NULL, and reps = 0 means "cleared" — never send null.
 // A set that was never logged stays unwritten (no row). A logged set that is cleared keeps its row with
 // reps = 0 (deletes can't be ordered by the newest-edit rule); every reader ignores sets with reps = 0.
@@ -1541,6 +1653,7 @@ function setVal(dateISO,day,exid,setIdx,val){
   const prev = +state[dateISO][exid][setIdx] || 0;
   const v = Math.max(0, val||0);
   state[dateISO][exid][setIdx] = v;
+  if(v>prev) startRest(dateISO, exid);                    // reps up = a set just done; a tap down is a correction
   if(v===0 && prev===0){ writeCache(); return; }
   const fields = { reps: v };                      // 0 = cleared (see above); never null
   if(v>0 && isLoaded(exid)){
@@ -1611,6 +1724,7 @@ function bind(dateISO, day){
   comp.onclick=()=>{
     if(!state[dateISO]) state[dateISO]={};
     state[dateISO]._done = !state[dateISO]._done;
+    if(state[dateISO]._done) stopRest();
     pushStatus(dateISO, day, state[dateISO]._done);
     render();
   };
@@ -1721,6 +1835,7 @@ function toggleDeload(){
 }
 
 async function doSignOut(){
+  stopRest();
   try{ await sb.auth.signOut(); }catch(e){}
   // hard-clear any lingering supabase tokens so we never get a stuck session
   try{
@@ -2454,6 +2569,7 @@ async function renderActivityView(){
 }
 
 initAuth();
+resumeRest();
 setTimeout(updateTabFade, 300);
 
 </script>
