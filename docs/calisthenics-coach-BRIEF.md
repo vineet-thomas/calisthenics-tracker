@@ -14,7 +14,7 @@ the UI only ever had one weight field per exercise. Nothing was broken; the feat
 | — | Progress past Supabase's 1,000-row cap | **Shipped** in 1.2.4 (#11) |
 | B | Equipment ladders | **Shipped** in 1.4.0 |
 | C | Session coaching | **Shipped** in 1.4.0 (same PR as B) |
-| E | Rest timer | **Yes, last**, as its own PR after B + C has settled |
+| E | Rest timer | **Shipped** in 1.5.0 |
 
 ### Shipped in 1.4.0 — how the open points were settled
 
@@ -61,6 +61,31 @@ negatives last.** Ids are unchanged — the same movement under different loadin
   programme entry (`negHint`) and says "after the working sets", with the dead-hang wording kept on pull-ups.
 - **Known one-off, kept on purpose:** the 42 old dips rows are negatives, not assisted reps. For one session the
   coach reads "last 7 / 7 / 7" as assisted reps and says "Aim for 12". No data change — same decision as squats.
+
+### Shipped in 1.5.0 — Item E, the rest timer
+
+Rest was running 2.5–5.5 min against a 90–120 s design (a ~50 min session became 72); 90–120 s is a deliberate,
+real reduction that will cost a little per-set performance, traded for ~20 minutes of the morning. It is not a
+claim that long rest is bad — 2.5 min is legitimate, 5.5 is drifting — hence 120 s on the hardest sets.
+
+- **Target rest** lives on each `EX_REGISTRY` entry as `rest` (seconds): **120** for dips, pull-ups (`rows`), overhead
+  press, floor press, squats, split squat, RDL and hip thrust (dips and pull-ups are the hardest sets of the week
+  and the even-sets plan depends on repeating the number); **90** for push-ups, scapula pull-ups, DB rows (per
+  side, so recovery is partly built in), lateral raise, rear delt fly, curl, core and calves; **60** for kettlebell
+  swings (a conditioning finisher — short rest is the stimulus).
+- **Starts** when a set's reps go **up** on **today's open day** (typed or ±; the countdown therefore begins on the
+  last tap). Weight edits, negatives, a tap down, a clear, a completed day and past days never start it. No timer
+  for negatives (exercise-level, no natural trigger).
+- **One timer, runs to zero and stops** — a new set restarts it, and it also runs after set 3 (the transition to
+  the next exercise is rest too). Nothing new starts for the next exercise's set 1.
+- **Alerts** are one vibration and two beeps at zero, on by default; the mute button on the bar is per device.
+  They fire only while the page is open.
+- **Screen Wake Lock** (`navigator.wakeLock`, not a service worker) is taken when a countdown starts and released
+  at zero or on skip; the browser drops it when the page is hidden, so it is taken again on return. If it is
+  refused or unsupported the countdown is still correct, because the end time is stored (`calisthenics-rest-v1`) and
+  a running countdown resumes when the app reopens.
+- Display: a thin bar pinned to the **top** (the toasts live at the bottom) with the name, time, mute and skip.
+- No schema change, no SQL, no data change.
 
 Read `AGENTS.md` first. It governs everything here (ids, branches, tests, SQL, NEVER block).
 

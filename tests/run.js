@@ -50,6 +50,7 @@ const step = (title, cmd, args, env={})=>new Promise(resolve=>{
   results.push(["history paging", await step("history paging", process.execPath, ["history.test.js"], env)]);
   results.push(["per-set weights", await step("per-set weights", process.execPath, ["sets.test.js"], env)]);
   results.push(["coaching", await step("coaching", process.execPath, ["coaching.test.js"], env)]);
+  results.push(["rest timer", await step("rest timer", process.execPath, ["rest.test.js"], env)]);
   if(REALSTACK){
     const up = await step("realstack: start", "bash", ["realstack/setup.sh", "start"]);
     if(up){

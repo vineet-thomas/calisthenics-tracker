@@ -125,7 +125,7 @@ async function newPage(browser, base, S, opts={}){
     navigator.storage.persisted = async()=>false;
     navigator.storage.persist = async()=>p==="granted";
   }, opts.persist || "granted");
-  if(opts.clock) await page.clock.install();
+  if(opts.clock) await page.clock.install(opts.clockTime ? { time:opts.clockTime } : undefined);   // clockTime: pin "now"
   // stand-in Supabase client, whether the page loads the vendored copy or (main's baseline) the CDN tag
   for(const pat of ["**/vendor/supabase-js-*/supabase.js", "**/@supabase/supabase-js@2"])
     await page.route(pat, r=>r.fulfill({ contentType:"application/javascript", body:FAKE_SUPABASE }));
