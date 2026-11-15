@@ -13,7 +13,15 @@ const badge = p=>p.locator("#syncBadge").textContent();
 // cloud rows for an exercise: "set:reps@weight", sorted by set
 const cloud = (S, ex)=>(S.db.workout_log||[]).filter(r=>r.exercise_id===ex).sort((a,b)=>a.set_index-b.set_index)
   .map(r=>`${r.set_index+1}:${r.reps==null?"-":r.reps}@${r.weight_kg==null?"-":r.weight_kg}`).join(" ");
-const field = async (page, ex, i)=>({ v: await page.inputValue(wt(ex,i)), inherited: await page.locator(wt(ex,i)).evaluate(e=>e.classList.contains("inherited")) });
+// a weight box: v = its value, ph = its placeholder, inherited = shown as set 1's weight (placeholder only)
+const field = async (page, ex, i)=>({ v: await page.inputValue(wt(ex,i)), ...await page.locator(wt(ex,i)).evaluate(e=>({ ph:e.placeholder, inherited:e.classList.contains("inherited") })) });
+const fields = (page, ex)=>Promise.all([0,1,2].map(i=>field(page, ex, i)));
+// "value" for a filled box, "(placeholder)" for an empty one, "*" when marked inherited
+const shown = f=>f.map(x=>(x.v!=="" ? x.v : "("+x.ph+")")+(x.inherited?"*":"")).join(" ");
+const monISO = ()=>{ const t=new Date(), o=t.getDay()===0?-6:1-t.getDay(); t.setDate(t.getDate()+o);
+  return t.getFullYear()+"-"+String(t.getMonth()+1).padStart(2,"0")+"-"+String(t.getDate()).padStart(2,"0"); };
+const row = (set, reps, weight)=>({ user_id:"u1", log_date:monISO(), day:"Mon", exercise_id:"ohpress", set_index:set, reps, weight_kg:weight, updated_at:"2026-01-01T00:00:00Z" });
+const status = completed=>({ user_id:"u1", log_date:monISO(), day:"Mon", completed, updated_at:"2026-01-01T00:00:00Z" });
 
 (async()=>{
   const browser = await chromium.launch({ channel:"chrome", headless:true });
@@ -24,13 +32,13 @@ const field = async (page, ex, i)=>({ v: await page.inputValue(wt(ex,i)), inheri
   { const S = makeServer(); const page = await newPage(browser, BASE, S);
     await page.fill(wt("ohpress",0), "10.5"); await sleep(700);
     const f3 = await field(page, "ohpress", 2);
-    check("A1 set 3 shows set 1's weight straight away, marked inherited", f3.v==="10.5" && f3.inherited, JSON.stringify(f3));
+    check("A1 set 3 shows set 1's weight straight away, as a placeholder (the box itself is empty)", f3.v==="" && f3.ph==="10.5" && f3.inherited, JSON.stringify(f3));
     check("A1 …but nothing is saved before any reps (no rows)", cloud(S,"ohpress")==="", cloud(S,"ohpress"));
     await page.fill(reps("ohpress",0), "10"); await sleep(150);
     await page.fill(reps("ohpress",1), "10"); await sleep(150);
     await page.fill(reps("ohpress",2), "9"); await sleep(1200);
     check("A2 weight entered once, three sets logged → all three rows carry weight_kg (acceptance 1)", cloud(S,"ohpress")==="1:10@10.5 2:10@10.5 3:9@10.5", cloud(S,"ohpress"));
-    check("A2 …and the fields are no longer 'inherited' once saved", !(await field(page,"ohpress",2)).inherited);
+    check("A2 …and once saved, each box holds its stored weight as a value, no longer 'inherited'", shown(await fields(page,"ohpress"))==="10.5 10.5 10.5", shown(await fields(page,"ohpress")));
     await page.fill(wt("ohpress",2), "8"); await sleep(400);
     await page.fill(wt("ohpress",0), "11.5"); await sleep(1200);
     check("A3 set 3 edited by hand, then set 1 changed → set 3 keeps its value, set 2 follows (acceptance 2)", cloud(S,"ohpress")==="1:10@11.5 2:10@11.5 3:9@8", cloud(S,"ohpress"));
@@ -58,8 +66,57 @@ const field = async (page, ex, i)=>({ v: await page.inputValue(wt(ex,i)), inheri
   { const S = makeServer(); const page = await newPage(browser, BASE, S);
     await page.fill(wt("ohpress",0), "9.5"); await sleep(800);
     await page.reload2(1200);
-    check("A7 weight typed before any reps survives a refresh (kept on the device)", (await page.inputValue(wt("ohpress",0)))==="9.5" && (await page.inputValue(wt("ohpress",2)))==="9.5", await page.inputValue(wt("ohpress",0)));
+    check("A7 weight typed before any reps survives a refresh (kept on the device); sets 2–3 show it as a placeholder", shown(await fields(page,"ohpress"))==="9.5 (9.5)* (9.5)*", shown(await fields(page,"ohpress")));
     check("A7 …and still has no row", cloud(S,"ohpress")==="");
+    await done(page); }
+
+  // P1–P2: the inherited weight is a true placeholder — a hint, never a value
+  { const S = makeServer(); const page = await newPage(browser, BASE, S);
+    await page.fill(wt("ohpress",0), "10.5"); await sleep(300);
+    check("P1 open day, no day_status row: sets 2–3 are empty boxes with set 1's weight as placeholder", shown(await fields(page,"ohpress"))==="10.5 (10.5)* (10.5)*", shown(await fields(page,"ohpress")));
+    await page.fill(wt("ohpress",0), "11.5"); await sleep(300);
+    check("P1 …and the placeholder follows set 1", shown(await fields(page,"ohpress"))==="11.5 (11.5)* (11.5)*", shown(await fields(page,"ohpress")));
+    await page.click(wt("ohpress",2)); await page.keyboard.type("8"); await sleep(300);
+    check("P2 typing into an inherited box needs no deleting first: it holds just what was typed", shown(await fields(page,"ohpress"))==="11.5 (11.5)* 8", shown(await fields(page,"ohpress")));
+    await page.fill(wt("ohpress",2), ""); await sleep(300);
+    check("P2 …and emptying it brings the placeholder back", shown(await fields(page,"ohpress"))==="11.5 (11.5)* (11.5)*", shown(await fields(page,"ohpress")));
+    check("P2 …none of which saves anything (no reps yet)", cloud(S,"ohpress")==="", cloud(S,"ohpress"));
+    await done(page); }
+
+  // P3–P6: open vs closed day, toggled on the device
+  { const S = makeServer(); const page = await newPage(browser, BASE, S);
+    await page.fill(wt("ohpress",0), "10.5"); await sleep(150);
+    await page.fill(reps("ohpress",0), "10"); await sleep(150);
+    await page.fill(reps("ohpress",1), "9"); await sleep(900);
+    check("P3 open day: logged sets show their stored weight, the unlogged set a placeholder", shown(await fields(page,"ohpress"))==="10.5 10.5 (10.5)*", shown(await fields(page,"ohpress")));
+    await page.click("#complete"); await sleep(900);
+    check("P4 day marked complete: the unlogged set shows nothing; logged sets keep their stored weight", shown(await fields(page,"ohpress"))==="10.5 10.5 (kg)", shown(await fields(page,"ohpress")));
+    check("P4 …and nothing was written for the unlogged set", cloud(S,"ohpress")==="1:10@10.5 2:9@10.5", cloud(S,"ohpress"));
+    await page.reload2(1200);
+    check("P4 …still nothing after a refresh", shown(await fields(page,"ohpress"))==="10.5 10.5 (kg)", shown(await fields(page,"ohpress")));
+    await page.fill(wt("ohpress",0), "11.5"); await sleep(900);
+    check("P5 closed day: changing set 1 still carries to the logged set, and the unlogged set stays empty", shown(await fields(page,"ohpress"))==="11.5 11.5 (kg)" && cloud(S,"ohpress")==="1:10@11.5 2:9@11.5", `${shown(await fields(page,"ohpress"))} · ${cloud(S,"ohpress")}`);
+    await page.fill(reps("ohpress",2), "8"); await sleep(900);
+    check("P5 closed day: logging the set saves set 1's weight with it, and the box then shows it", shown(await fields(page,"ohpress"))==="11.5 11.5 11.5" && cloud(S,"ohpress")==="1:10@11.5 2:9@11.5 3:8@11.5", `${shown(await fields(page,"ohpress"))} · ${cloud(S,"ohpress")}`);
+    await page.fill(reps("ohpress",2), ""); await sleep(900);
+    check("P5 closed day: a cleared set (reps = 0) shows nothing, though its row keeps the weight", shown(await fields(page,"ohpress"))==="11.5 11.5 (kg)" && cloud(S,"ohpress")==="1:10@11.5 2:9@11.5 3:0@11.5", `${shown(await fields(page,"ohpress"))} · ${cloud(S,"ohpress")}`);
+    await page.click("#complete"); await sleep(900);
+    check("P6 day reopened (completed = false): the cleared set shows its own weight again", (S.db.day_status||[]).some(r=>r.completed===false) && shown(await fields(page,"ohpress"))==="11.5 11.5 11.5", shown(await fields(page,"ohpress")));
+    await done(page); }
+
+  // P7–P9: the same rule when the day's status comes from the cloud
+  { const S = makeServer({ workout_log:[row(0,10,10.5), row(1,9,8)], day_status:[status(true)] });
+    const page = await newPage(browser, BASE, S);
+    check("P7 cloud says completed = true: unlogged set shows nothing, logged sets their own stored weights", shown(await fields(page,"ohpress"))==="10.5 8 (kg)", shown(await fields(page,"ohpress")));
+    await done(page); }
+  { const S = makeServer({ workout_log:[row(0,10,10.5), row(1,9,8)], day_status:[status(false)] });
+    const page = await newPage(browser, BASE, S);
+    check("P8 cloud says completed = false: the unlogged set shows set 1's weight as a placeholder", shown(await fields(page,"ohpress"))==="10.5 8 (10.5)*", shown(await fields(page,"ohpress")));
+    await done(page); }
+  // a set with reps whose row has no weight (the shape of rows from before 1.3.0)
+  { const S = makeServer({ workout_log:[row(0,10,10.5), row(1,9,null)], day_status:[status(true)] });
+    const page = await newPage(browser, BASE, S);
+    check("P9 closed day: a logged set with no stored weight shows none — set 1's is never passed off as its own", shown(await fields(page,"ohpress"))==="10.5 (kg) (kg)", shown(await fields(page,"ohpress")));
     await done(page); }
 
   // D1–D4: 0 is never saved
@@ -124,8 +181,8 @@ const field = async (page, ex, i)=>({ v: await page.inputValue(wt(ex,i)), inheri
       const t=new Date(), o=t.getDay()===0?-6:1-t.getDay(); t.setDate(t.getDate()+o);
       const mon = t.getFullYear()+"-"+String(t.getMonth()+1).padStart(2,"0")+"-"+String(t.getDate()).padStart(2,"0");
       localStorage.setItem("calisthenics-75hard-cache-v2", JSON.stringify({ [mon]:{ ohpress:[10,0,0], ohpress_weight:"10" } })); }) });
-    const f = await Promise.all([0,1,2].map(i=>field(page,"ohpress",i)));
-    check("M1 pre-1.3.0 saved weight shows on set 1 and is inherited by sets 2–3", f.map(x=>x.v).join(",")==="10,10,10" && !f[0].inherited && f[1].inherited, JSON.stringify(f));
+    const f = await fields(page,"ohpress");
+    check("M1 pre-1.3.0 saved weight shows on set 1 and is inherited (placeholder) by sets 2–3", shown(f)==="10 (10)* (10)*", JSON.stringify(f));
     check("M1 …and the old key is gone from the saved copy", await page.evaluate(()=>!JSON.stringify(state).includes("_weight")));
     await done(page); }
 
