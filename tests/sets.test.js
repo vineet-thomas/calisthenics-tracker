@@ -119,6 +119,40 @@ const status = completed=>({ user_id:"u1", log_date:monISO(), day:"Mon", complet
     check("P9 closed day: a logged set with no stored weight shows none — set 1's is never passed off as its own", shown(await fields(page,"ohpress"))==="10.5 (kg) (kg)", shown(await fields(page,"ohpress")));
     await done(page); }
 
+  // Q1–Q5: reps logged before any weight — set 1's weight then repeats on the logged sets
+  { const S = makeServer(); const page = await newPage(browser, BASE, S);
+    for(const i of [0,1,2]){ await page.fill(reps("ohpress",i), "10"); await sleep(150); }
+    await sleep(900);
+    check("Q1 reps logged on all three sets before any weight: no weight saved yet", cloud(S,"ohpress")==="1:10@- 2:10@- 3:10@-", cloud(S,"ohpress"));
+    await page.fill(wt("ohpress",0), "24"); await sleep(1200);
+    check("Q1 …then set 1's weight is repeated on sets 2–3 in the cloud", cloud(S,"ohpress")==="1:10@24 2:10@24 3:10@24", cloud(S,"ohpress"));
+    check("Q1 …and all three boxes show it as their own weight, not a placeholder", shown(await fields(page,"ohpress"))==="24 24 24", shown(await fields(page,"ohpress")));
+    await page.reload2(1200);
+    check("Q1 …and it survives a refresh", shown(await fields(page,"ohpress"))==="24 24 24", shown(await fields(page,"ohpress")));
+    await page.fill(wt("ohpress",1), "20"); await sleep(400);
+    await page.fill(wt("ohpress",0), "27"); await sleep(1200);
+    check("Q2 a hand edit is kept: set 2 stays 20 while set 3 still follows set 1 to 27", cloud(S,"ohpress")==="1:10@27 2:10@20 3:10@27", cloud(S,"ohpress"));
+    await done(page); }
+  { const S = makeServer(); const page = await newPage(browser, BASE, S);
+    await page.fill(reps("ohpress",1), "8"); await sleep(900);
+    await page.fill(wt("ohpress",0), "12"); await sleep(1200);
+    check("Q3 only set 2 logged: it takes set 1's weight, and set 3 (no reps) still has no row", cloud(S,"ohpress")==="2:8@12" && shown(await fields(page,"ohpress"))==="12 12 (12)*", `${cloud(S,"ohpress")} · ${shown(await fields(page,"ohpress"))}`);
+    await done(page); }
+  { const S = makeServer({ workout_log:[row(0,10,null), row(1,10,null), row(2,9,null)], day_status:[status(true)] });
+    const page = await newPage(browser, BASE, S);
+    await page.fill(wt("ohpress",0), "24"); await sleep(1200);
+    check("Q4 a completed day still gets the weight repeated on its logged sets", cloud(S,"ohpress")==="1:10@24 2:10@24 3:9@24", cloud(S,"ohpress"));
+    await done(page); }
+  { const S = makeServer(); const page = await newPage(browser, BASE, S);
+    S.offline = true;
+    for(const i of [0,1,2]){ await page.fill(reps("ohpress",i), "10"); await sleep(120); }
+    await page.click(wt("ohpress",0)); await page.keyboard.type("13.5", { delay:80 }); await sleep(600);
+    const q = await page.evaluate(()=>myOutbox().filter(o=>o.ex==="ohpress" && "weight_kg" in o.f).length);
+    check("Q5 typing a weight offline queues one entry per set (keystrokes merged), not one per keystroke", q===3, `${q} weight entries`);
+    S.offline = false; await page.evaluate(()=>window.dispatchEvent(new Event("online"))); await sleep(1500);
+    check("Q5 back online: all three rows carry the weight", cloud(S,"ohpress")==="1:10@13.5 2:10@13.5 3:10@13.5" && (await badge(page))==="Synced", `${cloud(S,"ohpress")} ${await badge(page)}`);
+    await done(page); }
+
   // D1–D4: 0 is never saved
   { const S = makeServer(); const page = await newPage(browser, BASE, S);
     await page.click('.stepper button[data-act="dec"][data-ex="pushups"][data-set="2"]'); await sleep(900);
